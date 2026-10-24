@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -16,6 +17,40 @@ func generateSessionID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
+	client := &http.Client{Timeout: 1500 * time.Millisecond}
+	candidates := []string{cameraID}
+	switch cameraID {
+	case "cam_frente":
+		candidates = append(candidates, "cam-0", "camera-1")
+	case "cam_garagem":
+		candidates = append(candidates, "cam-1", "camera-2")
+	case "cam_fundos":
+		candidates = append(candidates, "cam-2", "camera-3")
+	}
+
+	for _, cand := range candidates {
+		go2rtcURL := fmt.Sprintf("http://127.0.0.1:1984/api/whep?src=%s", cand)
+		req, err := http.NewRequest(http.MethodPost, go2rtcURL, bytes.NewReader(sdpOffer))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/sdp")
+		resp, err := client.Do(req)
+		if err == nil {
+			if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+				ans, _ := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if len(ans) > 0 {
+					return ans, true
+				}
+			}
+			_ = resp.Body.Close()
+		}
+	}
+	return nil, false
 }
 
 // ServeWHEP implementa a especificação WHEP (WebRTC HTTP Egress Protocol)
@@ -45,6 +80,16 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 			return
 		}
 
+		// Se o stream nativo ainda não estiver conectado, tenta negociar com go2rtc se estiver ativo
+		if !cam.connected {
+			if ans, ok := tryGo2RTC(cameraID, body); ok {
+				w.Header().Set("Content-Type", "application/sdp")
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write(ans)
+				return
+			}
+		}
+
 		offerSDP := string(body)
 
 		// Cria uma nova conexão PeerConnection
@@ -57,11 +102,22 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 		}
 
 		// Adiciona a track H.264 da câmera à conexão
-		if _, err := pc.AddTrack(cam.track); err != nil {
+		sender, err := pc.AddTrack(cam.track)
+		if err != nil {
 			_ = pc.Close()
 			http.Error(w, fmt.Sprintf("Erro ao adicionar track de vídeo: %v", err), http.StatusInternalServerError)
 			return
 		}
+
+		// Consome pacotes RTCP recebidos do navegador em background
+		go func() {
+			rtcpBuf := make([]byte, 1500)
+			for {
+				if _, _, err := sender.Read(rtcpBuf); err != nil {
+					return
+				}
+			}
+		}()
 
 		sessionID := generateSessionID()
 

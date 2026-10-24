@@ -3,10 +3,15 @@ package stream
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
 	"argus/internal/config"
+	"github.com/bluenviron/gortsplib/v4"
+	"github.com/bluenviron/gortsplib/v4/pkg/base"
+	"github.com/bluenviron/gortsplib/v4/pkg/format"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -33,18 +38,8 @@ type Engine struct {
 func NewEngine(cameras []config.CameraConfig) *Engine {
 	m := &webrtc.MediaEngine{}
 
-	// Registra suporte obrigatório a H.264 passthrough
-	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{
-			MimeType:     webrtc.MimeTypeH264,
-			ClockRate:    90000,
-			Channels:     0,
-			SDPFmtpLine:  "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
-			RTCPFeedback: nil,
-		},
-		PayloadType: 96,
-	}, webrtc.RTPCodecTypeVideo); err != nil {
-		log.Printf("[Stream] Aviso ao registrar codec H.264: %v", err)
+	if err := m.RegisterDefaultCodecs(); err != nil {
+		log.Printf("[Stream] Aviso ao registrar codecs padrão: %v", err)
 	}
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
@@ -81,7 +76,7 @@ func NewEngine(cameras []config.CameraConfig) *Engine {
 
 		engine.cameras[cam.ID] = cs
 
-		// Inicia rotina de ingestão RTSP silenciosa para a câmera
+		// Inicia rotina de ingestão RTSP ativa com zero-copy passthrough
 		go engine.startRTSPIngest(ctx, cs)
 	}
 
@@ -135,24 +130,106 @@ func (e *Engine) Close() {
 	}
 }
 
-// startRTSPIngest gerencia a conexão e reconexão silenciosa com a fonte RTSP
+// startRTSPIngest gerencia a conexão RTSP nativa e repassa pacotes RTP H.264 diretamente para o WebRTC
 func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
-	// Se nenhuma URL de RTSP foi informada (ex: câmera placeholder), aguarda
-	if cam.rtspURL == "" {
-		return
+	rawURL := strings.TrimSpace(cam.rtspURL)
+	rawURL = strings.Trim(rawURL, `"'`)
+	if idx := strings.Index(rawURL, "#"); idx != -1 {
+		rawURL = rawURL[:idx]
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+	if rawURL == "" || strings.HasPrefix(rawURL, "${") {
+		log.Printf("[RTSP] ⚠️ Câmera %s (%s) está sem URL RTSP configurada no .env", cam.id, cam.name)
+		return
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			// Rotina de verificação e reconexão de streaming
-			// Em produção com RTSP ativo, os pacotes RTP H.264 recebidos são
-			// encaminhados diretamente via cam.track.WriteRTP(pkt).
+		default:
 		}
+
+		u, err := base.ParseURL(rawURL)
+		if err != nil {
+			log.Printf("[RTSP] URL inválida para %s (%s): %v", cam.id, cam.name, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// Utiliza RTSP over TCP para máxima estabilidade e evitar perdas de pacotes UDP na rede
+		transport := gortsplib.TransportTCP
+		client := &gortsplib.Client{
+			Transport: &transport,
+		}
+
+		err = client.Start(u.Scheme, u.Host)
+		if err != nil {
+			log.Printf("[RTSP] Tentando conectar em %s (%s)...", cam.id, cam.name)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		desc, _, err := client.Describe(u)
+		if err != nil {
+			log.Printf("[RTSP] Falha no DESCRIBE de %s: %v", cam.id, err)
+			client.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		// Localiza a track de vídeo com codec H.264
+		var forma *format.H264
+		medi := desc.FindFormat(&forma)
+		if medi == nil {
+			log.Printf("[RTSP] Nenhuma track H.264 encontrada para %s", cam.id)
+			client.Close()
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		_, err = client.Setup(desc.BaseURL, medi, 0, 0)
+		if err != nil {
+			log.Printf("[RTSP] Falha no SETUP de %s: %v", cam.id, err)
+			client.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		// Repasse direto zero-copy de RTP para o WebRTC Pion
+		client.OnPacketRTP(medi, forma, func(pkt *rtp.Packet) {
+			cam.connected = true
+			p := *pkt
+			p.Header.PayloadType = 96
+			_ = cam.track.WriteRTP(&p)
+		})
+
+		_, err = client.Play(nil)
+		if err != nil {
+			log.Printf("[RTSP] Falha no PLAY de %s: %v", cam.id, err)
+			client.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		log.Printf("[RTSP] ✓ Stream H.264 conectado e ativo: %s (%s)", cam.id, cam.name)
+
+		// Aguarda enquanto a conexão estiver ativa ou contexto encerrado
+		waitErr := make(chan error, 1)
+		go func() {
+			waitErr <- client.Wait()
+		}()
+
+		select {
+		case <-ctx.Done():
+			client.Close()
+			return
+		case err := <-waitErr:
+			log.Printf("[RTSP] Conexão com %s interrompida: %v. Reconectando em 2s...", cam.id, err)
+		}
+
+		cam.connected = false
+		client.Close()
+		time.Sleep(2 * time.Second)
 	}
 }
