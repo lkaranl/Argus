@@ -93,10 +93,8 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# Atualiza também o arquivo local de referência
-cp "$TEMP_SERVICE" "$REPO_DIR/argus.service"
-
-echo -e "\n📋 Instalando arquivo de serviço no systemd (${SERVICE_FILE})..."
+# Instala o serviço diretamente no systemd sem sujar o controle de versão do git
+echo -e "\n📋 Instalando arquivo de serviço customizado no systemd (${SERVICE_FILE})..."
 
 if [ "$EUID" -ne 0 ]; then
     sudo cp "$TEMP_SERVICE" "$SERVICE_FILE"

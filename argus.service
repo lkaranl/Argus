@@ -9,21 +9,22 @@ Wants=network-online.target
 Type=simple
 
 # --- Permissoes de Execucao ---
-# Configurado dinamicamente para o usuario do servidor Linux (ex: secundario)
-User=secundario
-Group=secundario
+# Padrao de producao Linux: usuario e grupo dedicados sem privilegios de root
+User=argus
+Group=argus
 
 # --- Diretorio de Trabalho ---
-WorkingDirectory=/home/secundario/Documentos/Argus
+# Diretorio padrao de producao no Linux (/opt/argus)
+# (Ao rodar ./setup_service.sh, este caminho e usuario sao adaptados automaticamente)
+WorkingDirectory=/opt/argus
 
 # --- Variaveis de Ambiente e Segredos ---
-Environment="GOTOOLCHAIN=auto"
 # Carrega automaticamente senhas de cameras e tokens do arquivo .env
-EnvironmentFile=-/home/secundario/Documentos/Argus/.env
+EnvironmentFile=-/opt/argus/.env
 
 # --- Comando de Execucao ---
 # Executa o binario estatico unico do Argus apontando para o config.yaml
-ExecStart=/home/secundario/Documentos/Argus/argus -config /home/secundario/Documentos/Argus/config.yaml
+ExecStart=/opt/argus/argus -config /opt/argus/config.yaml
 
 # --- Confiabilidade e Recuperacao Autonoma ---
 # Garante reinicializacao automatica caso a conexao com câmeras ou energia oscile
