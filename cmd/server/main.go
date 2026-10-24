@@ -70,6 +70,17 @@ func setupRouter(
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(streamEngine.ListCameras())
 		})
+
+		// Diagnóstico completo do sistema e streams
+		api.Get("/diagnostics", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":    "online",
+				"time":      time.Now().Format(time.RFC3339),
+				"cameras":   streamEngine.ListCameras(),
+				"telemetry": telemetryMgr.GetLatest(),
+			})
+		})
 	})
 
 	// Servidor de arquivos estáticos embutidos via //go:embed

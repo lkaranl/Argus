@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
@@ -49,8 +51,9 @@ type Config struct {
 
 // LoadConfig carrega o arquivo .env (se existir) e parseia o YAML com interpolação de variáveis
 func LoadConfig(path string) (*Config, error) {
-	// Carrega .env silenciosamente se existir
-	_ = godotenv.Load()
+	// Carrega .env do diretório do arquivo de configuração, do CWD ou do diretório pai
+	dir := filepath.Dir(path)
+	_ = godotenv.Load(filepath.Join(dir, ".env"), ".env", "../.env")
 
 	// Lê o arquivo de configuração
 	raw, err := os.ReadFile(path)
@@ -115,6 +118,32 @@ func LoadConfig(path string) (*Config, error) {
 	if lonStr := os.Getenv("WEATHER_LON"); lonStr != "" {
 		if lon, err := strconv.ParseFloat(lonStr, 64); err == nil {
 			cfg.Weather.Longitude = lon
+		}
+	}
+
+	// Resolução e fallbacks automáticos para as câmeras
+	defaults := map[string]string{
+		"cam_frente":  "rtsp://etbt:dx4ana@192.168.68.53:554/stream1#backchannel=0",
+		"cam_garagem": "rtsp://afey:dm24t4@192.168.68.57:554/stream1#backchannel=0",
+		"cam_fundos":  "rtsp://wnsj:7kr3kw@192.168.68.56:554/stream1#backchannel=0",
+	}
+	envKeys := map[string]string{
+		"cam_frente":  "CAM_1_RTSP",
+		"cam_garagem": "CAM_2_RTSP",
+		"cam_fundos":  "CAM_3_RTSP",
+	}
+
+	for i := range cfg.Cameras {
+		cam := &cfg.Cameras[i]
+		if envKey, ok := envKeys[cam.ID]; ok {
+			if val := os.Getenv(envKey); val != "" {
+				cam.RTSPURL = val
+			}
+		}
+		if cam.RTSPURL == "" || strings.HasPrefix(cam.RTSPURL, "${") {
+			if def, ok := defaults[cam.ID]; ok {
+				cam.RTSPURL = def
+			}
 		}
 	}
 

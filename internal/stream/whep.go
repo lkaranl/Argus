@@ -101,8 +101,14 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 			return
 		}
 
-		// Adiciona a track H.264 da câmera à conexão
-		sender, err := pc.AddTrack(cam.track)
+		// Escolhe a track correspondente ao codec ativo da câmera (H.265 ou H.264)
+		trackToSend := cam.trackH264
+		if cam.isH265 {
+			trackToSend = cam.trackH265
+		}
+
+		// Adiciona a track de vídeo da câmera à conexão
+		sender, err := pc.AddTrack(trackToSend)
 		if err != nil {
 			_ = pc.Close()
 			http.Error(w, fmt.Sprintf("Erro ao adicionar track de vídeo: %v", err), http.StatusInternalServerError)

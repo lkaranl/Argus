@@ -2,28 +2,37 @@ package stream
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"argus/internal/config"
 	"github.com/bluenviron/gortsplib/v4"
 	"github.com/bluenviron/gortsplib/v4/pkg/base"
+	"github.com/bluenviron/gortsplib/v4/pkg/description"
 	"github.com/bluenviron/gortsplib/v4/pkg/format"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
 
 type cameraStream struct {
-	id        string
-	name      string
-	rtspURL   string
-	track     *webrtc.TrackLocalStaticRTP
-	sessions  map[string]*webrtc.PeerConnection
-	sessMu    sync.RWMutex
-	connected bool
-	cancel    context.CancelFunc
+	id          string
+	name        string
+	rtspURL     string
+	trackH264   *webrtc.TrackLocalStaticRTP
+	trackH265   *webrtc.TrackLocalStaticRTP
+	sessions    map[string]*webrtc.PeerConnection
+	sessMu      sync.RWMutex
+	connected   bool
+	cancel      context.CancelFunc
+	packetCount uint64
+	lastPacket  time.Time
+	lastError   string
+	codecInfo   string
+	isH265      bool
 }
 
 // Engine orquestra os streams de vídeo e as sessões WebRTC WHEP
@@ -38,6 +47,30 @@ type Engine struct {
 func NewEngine(cameras []config.CameraConfig) *Engine {
 	m := &webrtc.MediaEngine{}
 
+	// Registra suporte a H.264
+	_ = m.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType:     webrtc.MimeTypeH264,
+			ClockRate:    90000,
+			Channels:     0,
+			SDPFmtpLine:  "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+			RTCPFeedback: nil,
+		},
+		PayloadType: 96,
+	}, webrtc.RTPCodecTypeVideo)
+
+	// Registra suporte a H.265 (HEVC)
+	_ = m.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType:     webrtc.MimeTypeH265,
+			ClockRate:    90000,
+			Channels:     0,
+			SDPFmtpLine:  "",
+			RTCPFeedback: nil,
+		},
+		PayloadType: 98,
+	}, webrtc.RTPCodecTypeVideo)
+
 	if err := m.RegisterDefaultCodecs(); err != nil {
 		log.Printf("[Stream] Aviso ao registrar codecs padrão: %v", err)
 	}
@@ -51,27 +84,41 @@ func NewEngine(cameras []config.CameraConfig) *Engine {
 	}
 
 	for _, cam := range cameras {
-		track, err := webrtc.NewTrackLocalStaticRTP(
+		trackH264, err := webrtc.NewTrackLocalStaticRTP(
 			webrtc.RTPCodecCapability{
 				MimeType:  webrtc.MimeTypeH264,
 				ClockRate: 90000,
 			},
 			"video",
-			"stream-"+cam.ID,
+			"stream-"+cam.ID+"-h264",
 		)
 		if err != nil {
-			log.Printf("[Stream] Erro ao criar track para %s: %v", cam.ID, err)
+			log.Printf("[Stream] Erro ao criar track H.264 para %s: %v", cam.ID, err)
+			continue
+		}
+
+		trackH265, err := webrtc.NewTrackLocalStaticRTP(
+			webrtc.RTPCodecCapability{
+				MimeType:  webrtc.MimeTypeH265,
+				ClockRate: 90000,
+			},
+			"video",
+			"stream-"+cam.ID+"-h265",
+		)
+		if err != nil {
+			log.Printf("[Stream] Erro ao criar track H.265 para %s: %v", cam.ID, err)
 			continue
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cs := &cameraStream{
-			id:       cam.ID,
-			name:     cam.Name,
-			rtspURL:  cam.RTSPURL,
-			track:    track,
-			sessions: make(map[string]*webrtc.PeerConnection),
-			cancel:   cancel,
+			id:        cam.ID,
+			name:      cam.Name,
+			rtspURL:   cam.RTSPURL,
+			trackH264: trackH264,
+			trackH265: trackH265,
+			sessions:  make(map[string]*webrtc.PeerConnection),
+			cancel:    cancel,
 		}
 
 		engine.cameras[cam.ID] = cs
@@ -92,6 +139,18 @@ func (e *Engine) GetCamera(id string) (*cameraStream, bool) {
 }
 
 // ListCameras retorna a lista de IDs e nomes das câmeras registradas
+func maskURL(raw string) string {
+	if idx := strings.Index(raw, "@"); idx != -1 {
+		prefix := raw[:idx]
+		if colon := strings.Index(prefix, "://"); colon != -1 {
+			scheme := prefix[:colon+3]
+			return scheme + "***:***@" + raw[idx+1:]
+		}
+	}
+	return raw
+}
+
+// ListCameras retorna a lista de IDs e nomes das câmeras registradas com status de streaming
 func (e *Engine) ListCameras() []map[string]interface{} {
 	e.camerasMu.RLock()
 	defer e.camerasMu.RUnlock()
@@ -102,11 +161,17 @@ func (e *Engine) ListCameras() []map[string]interface{} {
 		sessCount := len(cam.sessions)
 		cam.sessMu.RUnlock()
 
+		pktCount := atomic.LoadUint64(&cam.packetCount)
 		result = append(result, map[string]interface{}{
-			"id":        cam.id,
-			"name":      cam.name,
-			"connected": cam.connected,
-			"viewers":   sessCount,
+			"id":               cam.id,
+			"name":             cam.name,
+			"connected":        cam.connected,
+			"viewers":          sessCount,
+			"packets_received": pktCount,
+			"last_packet":      cam.lastPacket.Format(time.RFC3339),
+			"last_error":       cam.lastError,
+			"codec":            cam.codecInfo,
+			"url":              maskURL(cam.rtspURL),
 		})
 	}
 	return result
@@ -152,6 +217,7 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 
 		u, err := base.ParseURL(rawURL)
 		if err != nil {
+			cam.lastError = fmt.Sprintf("URL inválida: %v", err)
 			log.Printf("[RTSP] URL inválida para %s (%s): %v", cam.id, cam.name, err)
 			time.Sleep(5 * time.Second)
 			continue
@@ -165,31 +231,46 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 
 		err = client.Start(u.Scheme, u.Host)
 		if err != nil {
-			log.Printf("[RTSP] Tentando conectar em %s (%s)...", cam.id, cam.name)
+			cam.lastError = fmt.Sprintf("Erro ao conectar no host %s: %v", u.Host, err)
+			log.Printf("[RTSP] Erro ao conectar em %s (%s - %s): %v", cam.id, cam.name, u.Host, err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
 		desc, _, err := client.Describe(u)
 		if err != nil {
+			cam.lastError = fmt.Sprintf("Falha no DESCRIBE (credenciais/autenticação): %v", err)
 			log.Printf("[RTSP] Falha no DESCRIBE de %s: %v", cam.id, err)
 			client.Close()
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
-		// Localiza a track de vídeo com codec H.264
-		var forma *format.H264
-		medi := desc.FindFormat(&forma)
-		if medi == nil {
-			log.Printf("[RTSP] Nenhuma track H.264 encontrada para %s", cam.id)
+		// Localiza track de vídeo H.265 ou H.264
+		var formaH264 *format.H264
+		var formaH265 *format.H265
+		mediH264 := desc.FindFormat(&formaH264)
+		mediH265 := desc.FindFormat(&formaH265)
+
+		if mediH265 != nil {
+			cam.isH265 = true
+			cam.codecInfo = fmt.Sprintf("H.265 (PT %d)", formaH265.PayloadType())
+			log.Printf("[RTSP] ✓ Codec H.265 (HEVC) detectado para %s (%s)", cam.id, cam.name)
+		} else if mediH264 != nil {
+			cam.isH265 = false
+			cam.codecInfo = fmt.Sprintf("H.264 (PT %d)", formaH264.PayloadType())
+			log.Printf("[RTSP] ✓ Codec H.264 detectado para %s (%s)", cam.id, cam.name)
+		} else {
+			cam.lastError = "Nenhum codec de vídeo H.264 ou H.265 encontrado no SDP da câmera"
+			log.Printf("[RTSP] ❌ Nenhum formato H.264/H.265 para %s", cam.id)
 			client.Close()
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		_, err = client.Setup(desc.BaseURL, medi, 0, 0)
+		err = client.SetupAll(desc.BaseURL, desc.Medias)
 		if err != nil {
+			cam.lastError = fmt.Sprintf("Falha no SETUP: %v", err)
 			log.Printf("[RTSP] Falha no SETUP de %s: %v", cam.id, err)
 			client.Close()
 			time.Sleep(3 * time.Second)
@@ -197,22 +278,32 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 		}
 
 		// Repasse direto zero-copy de RTP para o WebRTC Pion
-		client.OnPacketRTP(medi, forma, func(pkt *rtp.Packet) {
+		client.OnPacketRTPAny(func(m *description.Media, f format.Format, pkt *rtp.Packet) {
 			cam.connected = true
+			atomic.AddUint64(&cam.packetCount, 1)
+			cam.lastPacket = time.Now()
+			cam.lastError = ""
 			p := *pkt
-			p.Header.PayloadType = 96
-			_ = cam.track.WriteRTP(&p)
+
+			if _, ok := f.(*format.H265); ok {
+				p.Header.PayloadType = 98
+				_ = cam.trackH265.WriteRTP(&p)
+			} else if _, ok := f.(*format.H264); ok {
+				p.Header.PayloadType = 96
+				_ = cam.trackH264.WriteRTP(&p)
+			}
 		})
 
 		_, err = client.Play(nil)
 		if err != nil {
+			cam.lastError = fmt.Sprintf("Falha no PLAY: %v", err)
 			log.Printf("[RTSP] Falha no PLAY de %s: %v", cam.id, err)
 			client.Close()
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
-		log.Printf("[RTSP] ✓ Stream H.264 conectado e ativo: %s (%s)", cam.id, cam.name)
+		log.Printf("[RTSP] ✓ Stream conectado e ativo: %s (%s) [%s]", cam.id, cam.name, cam.codecInfo)
 
 		// Aguarda enquanto a conexão estiver ativa ou contexto encerrado
 		waitErr := make(chan error, 1)
