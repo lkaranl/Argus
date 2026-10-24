@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARGUS — CCTV Command Hub</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+</head>
+<body class="command-hub-body">
+
+  <!-- Grade Principal de CFTV e HUD Tático -->
+  <main class="cctv-grid" id="cctv-grid">
+
+    <!-- Câmera 1 (Superior Esquerdo) -->
+    <section class="camera-card" id="card-cam-1" data-camera-id="cam_frente">
+      <div class="camera-header">
+        <div class="cam-info">
+          <span class="cam-badge" id="cam-badge-cam_frente">CONECTANDO</span>
+          <span class="cam-name" id="cam-name-cam_frente">01 — FRENTE / PORTÃO</span>
+        </div>
+        <span class="cam-live-dot"></span>
+      </div>
+
+      <div class="video-container">
+        <video id="video-cam_frente" autoplay playsinline muted></video>
+        <div class="video-overlay" id="overlay-cam_frente">
+          <div class="spinner"></div>
+          <span class="overlay-text" id="status-text-cam_frente">Sincronizando WHEP...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Câmera 2 (Superior Direito) -->
+    <section class="camera-card" id="card-cam-2" data-camera-id="cam_garagem">
+      <div class="camera-header">
+        <div class="cam-info">
+          <span class="cam-badge" id="cam-badge-cam_garagem">CONECTANDO</span>
+          <span class="cam-name" id="cam-name-cam_garagem">02 — GARAGEM / ENTRADA</span>
+        </div>
+        <span class="cam-live-dot"></span>
+      </div>
+
+      <div class="video-container">
+        <video id="video-cam_garagem" autoplay playsinline muted></video>
+        <div class="video-overlay" id="overlay-cam_garagem">
+          <div class="spinner"></div>
+          <span class="overlay-text" id="status-text-cam_garagem">Sincronizando WHEP...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Câmera 3 (Inferior Esquerdo) -->
+    <section class="camera-card" id="card-cam-3" data-camera-id="cam_fundos">
+      <div class="camera-header">
+        <div class="cam-info">
+          <span class="cam-badge" id="cam-badge-cam_fundos">CONECTANDO</span>
+          <span class="cam-name" id="cam-name-cam_fundos">03 — FUNDOS / PERÍMETRO</span>
+        </div>
+        <span class="cam-live-dot"></span>
+      </div>
+
+      <div class="video-container">
+        <video id="video-cam_fundos" autoplay playsinline muted></video>
+        <div class="video-overlay" id="overlay-cam_fundos">
+          <div class="spinner"></div>
+          <span class="overlay-text" id="status-text-cam_fundos">Sincronizando WHEP...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quadrante 4: HUD Tático de Comando -->
+    <section class="hud-card" id="card-hud">
+      <header class="hud-header">
+        <div class="hud-brand">
+          <div class="hud-shield-icon">🛡️</div>
+          <div class="hud-titles">
+            <span class="hud-title">ARGUS COMMAND HUB</span>
+            <span class="hud-subtitle">TELEMETRIA OPERACIONAL CFTV</span>
+          </div>
+        </div>
+        <div class="hud-status-strip">
+          <span class="system-uptime" id="server-uptime">UPTIME: --</span>
+          <button class="fullscreen-btn" id="btn-fullscreen" title="Tela Cheia (F11)">⛶</button>
+        </div>
+      </header>
+
+      <div class="hud-widgets-container">
+        <!-- Widget 1: Relógio Modular Apple Watch Ultra com 60 Ticks SVG -->
+        <div class="cctv-clock-widget" id="cctv-clock-widget"></div>
+
+        <!-- Widget 2: Usina Fotovoltaica & Clima Estilo Tesla -->
+        <div class="cctv-solar-widget" id="cctv-solar-widget"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Módulos Vanilla JavaScript -->
+  <script src="/js/clock.js"></script>
+  <script src="/js/webrtc.js"></script>
+  <script src="/js/telemetry.js"></script>
+</body>
+</html>

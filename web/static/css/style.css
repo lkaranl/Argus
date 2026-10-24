@@ -1,0 +1,628 @@
+/* ==============================================================================
+   ARGUS CCTV COMMAND HUB — FOLHA DE ESTILOS TÁTICA (ACELERADA POR GPU)
+   ============================================================================== */
+
+:root {
+  --bg-deep: #06080d;
+  --bg-card: #0a0f18;
+  --bg-card-sub: #0f1624;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-accent: rgba(0, 230, 118, 0.3);
+
+  --accent-emerald: #00e676;
+  --accent-amber: #ffb300;
+  --accent-cyan: #00e5ff;
+  --accent-danger: #ff5252;
+  --text-muted: rgba(255, 255, 255, 0.55);
+
+  --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Segoe UI Mono", Monaco, Consolas, "Courier New", monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body.command-hub-body {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-deep);
+  color: #ffffff;
+  font-family: var(--font-main);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.fullscreen-active {
+  cursor: none;
+}
+
+/* ------------------------------------------------------------------------------
+   GRADE PRINCIPAL 2x2 (ADAPTÁVEL)
+   ------------------------------------------------------------------------------ */
+.cctv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 100vw;
+  height: 100vh;
+  gap: 6px;
+  padding: 6px;
+  background-color: #030407;
+}
+
+/* Isolamento em camadas de hardware na GPU */
+.camera-card, .hud-card {
+  transform: translateZ(0);
+  will-change: transform;
+  isolation: isolate;
+  background-color: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ------------------------------------------------------------------------------
+   CÂMERAS CFTV
+   ------------------------------------------------------------------------------ */
+.camera-header {
+  height: 38px;
+  padding: 0 14px;
+  background: linear-gradient(180deg, rgba(15, 22, 36, 0.95) 0%, rgba(10, 15, 24, 0.85) 100%);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 5;
+}
+
+.cam-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cam-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.8px;
+  background-color: rgba(255, 179, 0, 0.15);
+  color: var(--accent-amber);
+  border: 1px solid rgba(255, 179, 0, 0.3);
+}
+
+.cam-badge.online {
+  background-color: rgba(0, 230, 118, 0.15);
+  color: var(--accent-emerald);
+  border-color: rgba(0, 230, 118, 0.3);
+}
+
+.cam-badge.offline {
+  background-color: rgba(255, 82, 82, 0.15);
+  color: var(--accent-danger);
+  border-color: rgba(255, 82, 82, 0.3);
+}
+
+.cam-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 1px;
+}
+
+.cam-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald);
+  animation: pulseDot 2s infinite ease-in-out;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.video-container {
+  flex: 1;
+  width: 100%;
+  height: calc(100% - 38px);
+  position: relative;
+  background-color: #000000;
+}
+
+.video-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.video-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 8, 13, 0.88);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 4;
+  transition: opacity 0.3s ease;
+}
+
+.video-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--accent-emerald);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.overlay-text {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+/* ------------------------------------------------------------------------------
+   QUADRANTE 4: HUD TÁTICO
+   ------------------------------------------------------------------------------ */
+.hud-card {
+  background: linear-gradient(145deg, #090e17 0%, #06090f 100%);
+  border-color: rgba(0, 230, 118, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.hud-header {
+  height: 48px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(15, 22, 36, 0.5);
+}
+
+.hud-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud-shield-icon {
+  font-size: 1.25rem;
+}
+
+.hud-titles {
+  display: flex;
+  flex-direction: column;
+}
+
+.hud-title {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #ffffff;
+}
+
+.hud-subtitle {
+  font-size: 0.60rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--accent-emerald);
+}
+
+.hud-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.system-uptime {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.fullscreen-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  color: #ffffff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+
+.fullscreen-btn:hover {
+  background: rgba(0, 230, 118, 0.2);
+  border-color: var(--accent-emerald);
+}
+
+.hud-widgets-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------------------------
+   WIDGET 1: RELÓGIO MODULAR APPLE WATCH ULTRA (60 TICKS SVG)
+   ------------------------------------------------------------------------------ */
+.cctv-clock-widget {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.apple-clock-card {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  height: 160px;
+  background: radial-gradient(circle at 50% 30%, rgba(0, 230, 118, 0.05) 0%, rgba(5, 7, 10, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.apple-bezel-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.apple-tick {
+  stroke: rgba(255, 255, 255, 0.14);
+  transition: stroke 0.15s ease, filter 0.15s ease;
+}
+
+.apple-tick.major {
+  stroke: rgba(255, 255, 255, 0.28);
+}
+
+.apple-tick.active {
+  stroke: var(--accent-emerald);
+}
+
+.apple-tick.active.major {
+  stroke: #ffffff;
+}
+
+.apple-tick.head {
+  stroke: #ffffff !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 6px var(--accent-emerald)) drop-shadow(0 0 2px #ffffff);
+}
+
+.apple-dial-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 12px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  z-index: 3;
+}
+
+.apple-dial-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 260px;
+}
+
+.apple-dial-date {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.apple-live-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.apple-status-beacon {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 6px var(--accent-emerald);
+}
+
+.apple-status-text {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-emerald);
+}
+
+.apple-time-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.apple-digits-wrap {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.apple-digit {
+  font-family: var(--font-main);
+  font-size: 4.4rem;
+  font-weight: 500;
+  line-height: 0.95;
+  color: #ffffff;
+  letter-spacing: -2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.apple-colon {
+  font-size: 3.8rem;
+  color: var(--accent-emerald);
+  line-height: 0.95;
+  font-weight: 300;
+  margin: 0 1px;
+  transform: translateY(-4px);
+  animation: pulseColon 1s infinite alternate;
+}
+
+@keyframes pulseColon {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+
+.apple-seconds-pill {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent-emerald);
+  background: rgba(0, 230, 118, 0.12);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+  padding: 2px 6px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------------------
+   WIDGET 2: USINA SOLAR & CLIMA (TESLA STYLE)
+   ------------------------------------------------------------------------------ */
+.cctv-solar-widget {
+  width: 100%;
+  flex: 1;
+  display: flex;
+}
+
+.tesla-solar-card {
+  width: 100%;
+  background: rgba(12, 17, 26, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.solar-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.solar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.solar-icon-sun {
+  font-size: 1.3rem;
+}
+
+.solar-titles {
+  display: flex;
+  flex-direction: column;
+}
+
+.solar-card-title {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: #ffffff;
+}
+
+.solar-card-subtitle {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.tesla-live-beacon {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--accent-emerald);
+  background: rgba(0, 230, 118, 0.1);
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 230, 118, 0.3);
+}
+
+.beacon-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 6px var(--accent-emerald);
+}
+
+/* Métricas Monumentais Tesla Style */
+.solar-hero-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 6px 0;
+}
+
+.solar-hero-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hero-stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.hero-stat-val-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.hero-stat-icon {
+  font-size: 1.2rem;
+}
+
+.hero-stat-number {
+  font-family: var(--font-main);
+  font-size: 2.8rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-stat-number.stat-power {
+  color: var(--accent-amber);
+}
+
+.hero-stat-number.stat-yield {
+  color: var(--accent-emerald);
+}
+
+.hero-stat-unit {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.solar-hero-divider {
+  width: 1px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Faixa Compacta de Previsão */
+.solar-forecast-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.forecast-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forecast-day-name {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.forecast-day-icon {
+  font-size: 0.95rem;
+}
+
+.forecast-day-temp {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.forecast-day-temp small {
+  color: var(--text-muted);
+}
+
+.forecast-pill {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+  letter-spacing: 0.5px;
+}
+
+.forecast-strip-sep {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.08);
+}
