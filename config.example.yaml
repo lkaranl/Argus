@@ -1,0 +1,34 @@
+# ==============================================================================
+# ARGUS — Configuração Declarativa do Hub CFTV
+# ==============================================================================
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+
+# Lista de Câmeras Monitoradas no Painel
+cameras:
+  - id: "cam_frente"
+    name: "Câmera 01 — Frente"
+    # Aceita interpolação de variáveis de ambiente definidas no .env ou sistema
+    rtsp_url: "${CAM_1_RTSP}"
+
+  - id: "cam_garagem"
+    name: "Câmera 02 — Garagem"
+    rtsp_url: "${CAM_2_RTSP}"
+
+  - id: "cam_fundos"
+    name: "Câmera 03 — Fundos"
+    rtsp_url: "${CAM_3_RTSP}"
+
+# Usina Solar Fotovoltaica (Huawei FusionSolar)
+solar:
+  poll_interval_minutes: 5
+
+# Clima e Previsão Meteorológica (Open-Meteo)
+weather:
+  enabled: true
+  latitude: -10.8778   # Exemplo: Ji-Paraná, RO
+  longitude: -61.9514
+  city_name: "Ji-Paraná, RO"
+  poll_interval_minutes: 30
