@@ -9,7 +9,7 @@ server:
 # Lista de Câmeras Monitoradas no Painel
 cameras:
   - id: "cam_frente"
-    name: "Câmera 01 — Frente"
+    name: "Câmera 01 — Portão"
     # Aceita interpolação de variáveis de ambiente definidas no .env ou sistema
     rtsp_url: "${CAM_1_RTSP}"
 
@@ -18,7 +18,7 @@ cameras:
     rtsp_url: "${CAM_2_RTSP}"
 
   - id: "cam_fundos"
-    name: "Câmera 03 — Fundos"
+    name: "Câmera 03 — Área do Fundo"
     rtsp_url: "${CAM_3_RTSP}"
 
 # Usina Solar Fotovoltaica (Huawei FusionSolar)
@@ -28,7 +28,7 @@ solar:
 # Clima e Previsão Meteorológica (Open-Meteo)
 weather:
   enabled: true
-  latitude: -10.8778   # Exemplo: Ji-Paraná, RO
+  latitude: -10.8847
   longitude: -61.9514
   city_name: "Ji-Paraná, RO"
   poll_interval_minutes: 30
