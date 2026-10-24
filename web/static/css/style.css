@@ -146,6 +146,28 @@ body.fullscreen-active {
   height: 100%;
   object-fit: cover;
   display: block;
+  pointer-events: none;
+}
+
+/* Oculta controles nativos e botão de play gigante em navegadores de Smart TVs (WebKit/Blink/Tizen/webOS) */
+.video-container video::-webkit-media-controls,
+.video-container video::-webkit-media-controls-enclosure,
+.video-container video::-webkit-media-controls-panel,
+.video-container video::-webkit-media-controls-play-button,
+.video-container video::-webkit-media-controls-start-playback-button,
+.video-container video::-webkit-media-controls-overlay-play-button,
+.video-container video::-webkit-media-controls-current-time-display,
+.video-container video::-webkit-media-controls-time-remaining-display,
+.video-container video::-webkit-media-controls-timeline,
+.video-container video::-webkit-media-controls-volume-slider,
+.video-container video::-webkit-media-controls-mute-button,
+.video-container video::-webkit-media-controls-fullscreen-button,
+.video-container video::-internal-media-controls-download-button,
+.video-container video::-internal-media-controls-loading-panel {
+  display: none !important;
+  opacity: 0 !important;
+  -webkit-appearance: none !important;
+  pointer-events: none !important;
 }
 
 .video-overlay {

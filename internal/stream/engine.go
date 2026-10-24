@@ -252,6 +252,7 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 		mediH264 := desc.FindFormat(&formaH264)
 		mediH265 := desc.FindFormat(&formaH265)
 
+		wasH265 := cam.isH265
 		if mediH265 != nil {
 			cam.isH265 = true
 			cam.codecInfo = fmt.Sprintf("H.265 (PT %d)", formaH265.PayloadType())
@@ -266,6 +267,17 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			client.Close()
 			time.Sleep(5 * time.Second)
 			continue
+		}
+
+		// Se o codec detectado mudou (ex: cliente conectou antes do DESCRIBE em câmera H.265),
+		// encerra sessões antigas para forçar renegociação imediata na track correta
+		if wasH265 != cam.isH265 {
+			cam.sessMu.Lock()
+			for id, pc := range cam.sessions {
+				_ = pc.Close()
+				delete(cam.sessions, id)
+			}
+			cam.sessMu.Unlock()
 		}
 
 		err = client.SetupAll(desc.BaseURL, desc.Medias)
