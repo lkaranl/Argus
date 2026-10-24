@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pion/webrtc/v4"
 )
@@ -100,8 +101,14 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 			return
 		}
 
-		// Aguarda coleta inicial de candidatos ICE locais para resposta SDP completa
-		<-gatherComplete
+		// Aguarda coleta inicial de candidatos ICE locais (timeout de 1s para resposta rápida)
+		select {
+		case <-gatherComplete:
+		case <-time.After(1 * time.Second):
+		case <-r.Context().Done():
+			_ = pc.Close()
+			return
+		}
 
 		// Armazena sessão ativa
 		cam.sessMu.Lock()

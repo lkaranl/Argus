@@ -66,6 +66,10 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	// Desativa prazos de escrita para conexões SSE contínuas
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
 	// Cria canal com buffer para receber eventos
 	clientChan := make(chan []byte, 32)
 
