@@ -25,11 +25,29 @@ O **Argus** é uma central de monitoramento CFTV (CCTV Command Hub) comercial, u
 
 ## 🐧 Guia Definitivo de Implantação no Servidor Linux
 
-Como o servidor de produção é **sempre Linux**, o processo de compilação, instalação e gerenciamento como serviço do sistema é direto e padronizado.
+Como o servidor de produção é **sempre Linux**, o projeto possui um script automatizado (`setup_service.sh`) que realiza todo o processo de preparação, testes, compilação e ativação como serviço do sistema no `systemd`.
 
 ---
 
-### 1. Compilação do Binário Estático para Linux
+### ⚡ Instalação Rápida em 1 Comando (`setup_service.sh`)
+
+No terminal do seu servidor Linux, dentro da pasta do projeto, basta executar:
+
+```bash
+./setup_service.sh
+```
+
+**O que este script faz automaticamente por você:**
+1. Cria os arquivos `.env` e `config.yaml` a partir dos modelos (caso ainda não existam).
+2. Roda a suíte completa de testes unitários (`go test` e `go vet`) para garantir a integridade do código.
+3. Compila o binário estático e otimizado (`argus`) com `CGO_ENABLED=0`.
+4. Gera o arquivo de serviço `argus.service` configurado com seu usuário e caminho local.
+5. Instala no `systemd`, habilita no boot do sistema e inicia o serviço.
+6. Valida se o serviço está ativo e exibe a URL com o IP da sua rede para abrir na TV.
+
+---
+
+### 🛠️ Instalação Passo a Passo Manual (Opcional)
 
 Se você estiver compilando diretamente no servidor Linux ou gerando o executável a partir de outra máquina (macOS / CI):
 

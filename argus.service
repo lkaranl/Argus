@@ -1,0 +1,44 @@
+[Unit]
+Description=Argus (CCTV Command Hub) - Central de Monitoramento e Telemetria 24/7
+# Inicia apos a rede estar online e estabilizada
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# --- Tipo de Servico ---
+Type=simple
+
+# --- Permissoes de Execucao ---
+# Configurado dinamicamente para o usuario do servidor Linux (ex: secundario)
+User=secundario
+Group=secundario
+
+# --- Diretorio de Trabalho ---
+WorkingDirectory=/home/secundario/Documentos/Argus
+
+# --- Variaveis de Ambiente e Segredos ---
+Environment="GOTOOLCHAIN=auto"
+# Carrega automaticamente senhas de cameras e tokens do arquivo .env
+EnvironmentFile=-/home/secundario/Documentos/Argus/.env
+
+# --- Comando de Execucao ---
+# Executa o binario estatico unico do Argus apontando para o config.yaml
+ExecStart=/home/secundario/Documentos/Argus/argus -config /home/secundario/Documentos/Argus/config.yaml
+
+# --- Confiabilidade e Recuperacao Autonoma ---
+# Garante reinicializacao automatica caso a conexao com câmeras ou energia oscile
+Restart=always
+# Aguarda 3 segundos antes de reiniciar (evita loops rapidos e libera sockets de rede)
+RestartSec=3s
+# Reinicio preventivo a cada 48 horas para manutencao de sockets WebRTC e memoria
+RuntimeMaxSec=48h
+
+# --- Limites de Recursos e Logs ---
+# Permite multiplos descritores de rede para conexoes WebRTC/RTSP simultaneas
+LimitNOFILE=65535
+SyslogIdentifier=argus-cctv
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
