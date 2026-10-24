@@ -224,30 +224,30 @@ body.fullscreen-active {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 14px;
-  gap: 12px;
-  justify-content: space-evenly;
+  padding: 12px;
+  gap: 10px;
+  justify-content: space-between;
 }
 
 /* ------------------------------------------------------------------------------
-   WIDGET 1: RELÓGIO MODULAR APPLE WATCH ULTRA (60 TICKS SVG)
+   WIDGET 1: RELÓGIO MODULAR APPLE WATCH ULTRA (PROTAGONISTA DO HUD)
    ------------------------------------------------------------------------------ */
 .cctv-clock-widget {
   width: 100%;
   display: flex;
   justify-content: center;
-  flex: 0 0 auto;
+  flex: 1.55;
+  min-height: 0;
 }
 
 .apple-clock-card {
   position: relative;
   width: 100%;
-  max-width: 380px;
-  height: 160px;
-  background: radial-gradient(circle at 50% 30%, rgba(0, 230, 118, 0.05) 0%, rgba(5, 7, 10, 0.95) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  height: 100%;
+  background: radial-gradient(circle at 50% 35%, rgba(0, 230, 118, 0.12) 0%, rgba(5, 8, 14, 0.98) 85%);
+  border: 1px solid rgba(0, 230, 118, 0.32);
   border-radius: 20px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 230, 118, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -264,12 +264,12 @@ body.fullscreen-active {
 }
 
 .apple-tick {
-  stroke: rgba(255, 255, 255, 0.14);
+  stroke: rgba(255, 255, 255, 0.16);
   transition: stroke 0.15s ease, filter 0.15s ease;
 }
 
 .apple-tick.major {
-  stroke: rgba(255, 255, 255, 0.28);
+  stroke: rgba(255, 255, 255, 0.34);
 }
 
 .apple-tick.active {
@@ -282,20 +282,20 @@ body.fullscreen-active {
 
 .apple-tick.head {
   stroke: #ffffff !important;
-  stroke-width: 3px !important;
-  filter: drop-shadow(0 0 6px var(--accent-emerald)) drop-shadow(0 0 2px #ffffff);
+  stroke-width: 3.5px !important;
+  filter: drop-shadow(0 0 8px var(--accent-emerald)) drop-shadow(0 0 3px #ffffff);
 }
 
 .apple-dial-content {
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 12px 24px;
+  padding: 16px 32px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   z-index: 3;
 }
 
@@ -304,36 +304,36 @@ body.fullscreen-active {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 260px;
+  max-width: 440px;
 }
 
 .apple-dial-date {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: clamp(0.88rem, 1.35vw, 1.2rem);
   font-weight: 700;
-  letter-spacing: 1.5px;
-  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .apple-live-status {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .apple-status-beacon {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--accent-emerald);
-  box-shadow: 0 0 6px var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald);
 }
 
 .apple-status-text {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: clamp(0.8rem, 1.15vw, 1.05rem);
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   color: var(--accent-emerald);
 }
 
@@ -341,7 +341,7 @@ body.fullscreen-active {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 14px;
 }
 
 .apple-digits-wrap {
@@ -352,21 +352,23 @@ body.fullscreen-active {
 
 .apple-digit {
   font-family: var(--font-main);
-  font-size: 4.4rem;
-  font-weight: 500;
-  line-height: 0.95;
+  font-size: clamp(5.4rem, 8.8vw, 8.2rem);
+  font-weight: 700;
+  line-height: 0.92;
   color: #ffffff;
-  letter-spacing: -2px;
+  letter-spacing: -3px;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 28px rgba(255, 255, 255, 0.16);
 }
 
 .apple-colon {
-  font-size: 3.8rem;
+  font-size: clamp(4.5rem, 7.2vw, 6.8rem);
   color: var(--accent-emerald);
-  line-height: 0.95;
-  font-weight: 300;
-  margin: 0 1px;
-  transform: translateY(-4px);
+  line-height: 0.92;
+  font-weight: 400;
+  margin: 0 3px;
+  transform: translateY(-6px);
+  text-shadow: 0 0 18px rgba(0, 230, 118, 0.5);
   animation: pulseColon 1s infinite alternate;
 }
 
@@ -377,36 +379,37 @@ body.fullscreen-active {
 
 .apple-seconds-pill {
   font-family: var(--font-mono);
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: clamp(1.35rem, 2.2vw, 2rem);
+  font-weight: 800;
   color: var(--accent-emerald);
-  background: rgba(0, 230, 118, 0.12);
-  border: 1px solid rgba(0, 230, 118, 0.3);
-  padding: 2px 6px;
-  border-radius: 6px;
-  letter-spacing: 0.5px;
+  background: rgba(0, 230, 118, 0.15);
+  border: 1px solid rgba(0, 230, 118, 0.4);
+  padding: 4px 10px;
+  border-radius: 8px;
+  letter-spacing: 1px;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 12px rgba(0, 230, 118, 0.15);
 }
 
 /* ------------------------------------------------------------------------------
-   WIDGET 2: USINA SOLAR & CLIMA (TESLA STYLE)
+   WIDGET 2: USINA SOLAR & CLIMA (COMPACTO / SECUNDÁRIO)
    ------------------------------------------------------------------------------ */
 .cctv-solar-widget {
   width: 100%;
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
 }
 
 .tesla-solar-card {
   width: 100%;
-  background: rgba(12, 17, 26, 0.7);
-  border: 1px solid var(--border-subtle);
-  border-radius: 18px;
-  padding: 14px 18px;
+  background: rgba(10, 14, 22, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 9px 14px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
 }
 
 .solar-card-header {
@@ -418,11 +421,11 @@ body.fullscreen-active {
 .solar-title-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .solar-icon-sun {
-  font-size: 1.3rem;
+  font-size: 1rem;
 }
 
 .solar-titles {
@@ -432,45 +435,45 @@ body.fullscreen-active {
 
 .solar-card-title {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 1.2px;
-  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .solar-card-subtitle {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: var(--text-muted);
 }
 
 .tesla-live-beacon {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.58rem;
   font-weight: 700;
   color: var(--accent-emerald);
-  background: rgba(0, 230, 118, 0.1);
-  padding: 3px 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 230, 118, 0.3);
+  background: rgba(0, 230, 118, 0.08);
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 230, 118, 0.22);
 }
 
 .beacon-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--accent-emerald);
-  box-shadow: 0 0 6px var(--accent-emerald);
+  box-shadow: 0 0 5px var(--accent-emerald);
 }
 
-/* Métricas Monumentais Tesla Style */
+/* Métricas Compactas Tesla Style */
 .solar-hero-metrics {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 6px 0;
+  padding: 2px 0;
 }
 
 .solar-hero-stat {
@@ -481,28 +484,28 @@ body.fullscreen-active {
 
 .hero-stat-label {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.56rem;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   color: var(--text-muted);
 }
 
 .hero-stat-val-wrap {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 3px;
 }
 
 .hero-stat-icon {
-  font-size: 1.2rem;
+  font-size: 0.9rem;
 }
 
 .hero-stat-number {
   font-family: var(--font-main);
-  font-size: 2.8rem;
+  font-size: clamp(1.45rem, 2.1vw, 1.85rem);
   font-weight: 700;
   line-height: 1;
-  letter-spacing: -1px;
+  letter-spacing: -0.5px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -516,15 +519,15 @@ body.fullscreen-active {
 
 .hero-stat-unit {
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-muted);
 }
 
 .solar-hero-divider {
   width: 1px;
-  height: 48px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 28px;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 /* Faixa Compacta de Previsão */
@@ -532,32 +535,32 @@ body.fullscreen-active {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 10px;
-  padding: 6px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 8px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .forecast-strip-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .forecast-day-name {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .forecast-day-icon {
-  font-size: 0.95rem;
+  font-size: 0.85rem;
 }
 
 .forecast-day-temp {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 600;
   color: #ffffff;
 }
@@ -568,9 +571,9 @@ body.fullscreen-active {
 
 .forecast-pill {
   font-family: var(--font-mono);
-  font-size: 0.58rem;
+  font-size: 0.54rem;
   font-weight: 800;
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
   border: 1px solid;
   letter-spacing: 0.5px;
@@ -578,6 +581,6 @@ body.fullscreen-active {
 
 .forecast-strip-sep {
   width: 1px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 16px;
+  background: rgba(255, 255, 255, 0.07);
 }

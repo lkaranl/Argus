@@ -11,20 +11,24 @@ class AppleModularClock {
     this.diasSemana = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
     this.meses = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
 
-    this.width = 330;
-    this.height = 160;
+    this.width = 560;
+    this.height = 240;
     this.tickElements = [];
 
     this.render();
-    this.buildBezelTicks();
+    this.syncDimensionsAndBuildTicks();
     this.start();
+
+    window.addEventListener("resize", () => {
+      this.syncDimensionsAndBuildTicks();
+    });
   }
 
   render() {
     this.container.innerHTML = `
-      <div class="apple-clock-card">
+      <div class="apple-clock-card" id="apple-clock-card">
         <!-- Bezel de 60 Segundos em SVG de Alta Precisão -->
-        <svg class="apple-bezel-svg" id="apple-bezel-svg" viewBox="0 0 ${this.width} ${this.height}">
+        <svg class="apple-bezel-svg" id="apple-bezel-svg" viewBox="0 0 ${this.width} ${this.height}" preserveAspectRatio="none">
           <rect 
             id="apple-bezel-guide"
             x="14" y="14" 
@@ -59,6 +63,9 @@ class AppleModularClock {
       </div>
     `;
 
+    this.elCard = document.getElementById("apple-clock-card");
+    this.elSvg = document.getElementById("apple-bezel-svg");
+    this.elGuide = document.getElementById("apple-bezel-guide");
     this.elHours = document.getElementById("apple-hours");
     this.elMinutes = document.getElementById("apple-minutes");
     this.elSecPill = document.getElementById("apple-seconds-pill");
@@ -67,10 +74,27 @@ class AppleModularClock {
     this.ticksGroup = document.getElementById("apple-ticks-group");
   }
 
+  syncDimensionsAndBuildTicks() {
+    if (this.elCard) {
+      const rect = this.elCard.getBoundingClientRect();
+      if (rect.width > 100 && rect.height > 80) {
+        this.width = Math.round(rect.width);
+        this.height = Math.round(rect.height);
+      }
+    }
+    if (this.elSvg && this.elGuide) {
+      this.elSvg.setAttribute("viewBox", `0 0 ${this.width} ${this.height}`);
+      this.elGuide.setAttribute("width", String(this.width - 28));
+      this.elGuide.setAttribute("height", String(this.height - 28));
+    }
+    this.buildBezelTicks();
+  }
+
   buildBezelTicks() {
-    const guide = document.getElementById("apple-bezel-guide");
+    const guide = this.elGuide || document.getElementById("apple-bezel-guide");
     if (!guide || !this.ticksGroup) return;
 
+    this.ticksGroup.innerHTML = "";
     const totalLen = guide.getTotalLength();
     this.tickElements = [];
 
@@ -95,8 +119,8 @@ class AppleModularClock {
       const ny = dx / len;
 
       const isMajor = i % 5 === 0;
-      const tickLength = isMajor ? 7.5 : 4.5;
-      const strokeWidth = isMajor ? 2.0 : 1.2;
+      const tickLength = isMajor ? 10 : 6;
+      const strokeWidth = isMajor ? 2.5 : 1.5;
 
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.setAttribute("x1", p1.x.toFixed(2));
