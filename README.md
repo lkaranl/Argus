@@ -1,166 +1,240 @@
 # 🛡️ Argus — CCTV Command Hub em Go
 
-O **Argus** é uma central de monitoramento CFTV (CCTV Command Hub) comercial, ultra-leve e de altíssimo desempenho, voltada para exibição ininterrupta 24/7 em Smart TVs, monitores de portaria, centrais de segurança e quiosques operacionais.
+O **Argus** é uma central de monitoramento CFTV (CCTV Command Hub) comercial, ultra-leve e de altíssimo desempenho, projetada para execução contínua 24/7 em **servidores Linux** (Ubuntu, Debian, Alpine, Fedora, Rocky, Raspberry Pi OS) e exibição em Smart TVs, quiosques e monitores de portaria.
 
 ---
 
-## ⚡ Destaques de Desempenho e Arquitetura
+## ⚡ Por Que o Argus é Diferente?
 
-1. **Binário Único Estático**: Distribuído como um único arquivo compilado em Go (`CGO_ENABLED=0`), pesando apenas **~12 MB**, contendo o backend e todo o frontend embutido via `//go:embed`.
-2. **Consumo Mínimo de Recursos**:
-   - **Servidor**: Consumo de CPU < 2% e RAM < 35 MB em repouso com streams ativos, ideal para mini-PCs Celeron, Raspberry Pi ou servidores básicos sem placa de vídeo.
-   - **Cliente (Navegador)**: Extrai o FPS máximo nativo das câmeras (30 a 60 FPS cravados) através de aceleração por hardware nativa da GPU/VPU.
-3. **Zero Transcodificação**: Roteamento estrito *Zero-Copy Passthrough* (RTP over RTSP ➔ RTP over WebRTC SRTP) com codec **H.264**.
-4. **Telemetria Integrada em Tempo Real via SSE**:
-   - **Usina Solar Fotovoltaica (Huawei FusionSolar Kiosk)**: Coleta potência instantânea em kW e geração do dia em kWh diretamente do quiosque público oficial da Huawei.
-   - **Clima e Estimativa Fotovoltaica (Open-Meteo)**: Previsão de 3 dias, cálculo de radiação em kWh/m² e potencial solar.
-5. **Frontend 100% Vanilla (Sem Frameworks)**:
-   - Relógio Modular estilo Apple Watch Ultra com mostrador periférico de 60 marcadores de segundos desenhados matematicamente em SVG vetorial.
-   - Painel Solar estilo Tesla com métricas monumentais legíveis a longa distância.
-   - Isolamento de renderização da GPU (`transform: translateZ(0)` e `isolation: isolate`) garantindo que as telemetrias e o relógio não provoquem *reflow* ou perda de frames nos vídeos.
-   - Modo Tela Cheia automático com duplo clique ou tecla `F11`.
+1. **Binário Único Estático para Linux**:
+   - Compilado com `CGO_ENABLED=0` e sem dependências dinâmicas de sistema (libc/glibc).
+   - Tamanho de apenas **~12 MB**, contendo o servidor Go, motor WebRTC e toda a interface web HUD embutida via `//go:embed`.
+2. **Consumo Extremanente Baixo (Hardware Modesto)**:
+   - **Servidor Linux**: CPU < 2% e RAM < 35 MB com múltiplos streams ativos (ideal para mini-PCs Celeron, VPS básicas ou Raspberry Pi 3/4/5).
+   - **Zero Transcodificação**: Roteamento direto *Zero-Copy Passthrough* (RTP over RTSP ➔ RTP over WebRTC SRTP) em H.264.
+3. **Telemetria Solar & Meteorológica em Tempo Real**:
+   - Conexão nativa com a API REST de Quiosque da **Huawei FusionSolar** (potência em kW e geração em kWh).
+   - Previsão de 3 dias e estimativa de radiação solar fotovoltaica (kWh/m²) via **Open-Meteo**.
+   - Envio instantâneo ao navegador via Server-Sent Events (SSE).
+4. **Interface Tática 100% Vanilla (Sem Frameworks)**:
+   - Relógio Modular de Aviação/Apple Watch Ultra com 60 marcadores de segundos matemáticos em SVG.
+   - Painel solar estilo Tesla com leitura facilitada para TVs a longa distância.
+   - Camadas aceleradas por GPU (`transform: translateZ(0)` e `isolation: isolate`) garantindo 30 a 60 FPS cravados sem queda de desempenho.
 
 ---
 
-## 📂 Estrutura do Projeto
+## 🐧 Guia Definitivo de Implantação no Servidor Linux
 
-```text
-argus/
-├── cmd/
-│   └── server/
-│       ├── main.go               # Ponto de entrada e graceful shutdown
-│       └── server_test.go        # Testes de integração de rotas HTTP
-├── internal/
-│   ├── config/
-│   │   ├── config.go             # Leitor de config.yaml e binding com .env
-│   │   └── config_test.go        # Teste de interpolação de variáveis
-│   ├── stream/
-│   │   ├── engine.go             # Gerenciador de tracks WebRTC Pion
-│   │   ├── whep.go               # Endpoint HTTP WHEP (SDP Offer/Answer)
-│   │   └── whep_test.go          # Testes unitários do handshake WHEP
-│   ├── sse/
-│   │   ├── broker.go             # Broker Pub/Sub thread-safe para Server-Sent Events
-│   │   └── broker_test.go        # Testes de broadcast e clientes lentos
-│   ├── solar/
-│   │   ├── fusionsolar.go        # Cliente Kiosk REST da Huawei FusionSolar
-│   │   └── fusionsolar_test.go   # Testes com payload HTML-escaped da Huawei
-│   ├── weather/
-│   │   ├── openmeteo.go          # Cliente Open-Meteo com estimativa solar
-│   │   └── openmeteo_test.go     # Testes de conversão física de radiação
-│   └── telemetry/
-│       ├── manager.go            # Orquestrador de background e agregação de dados
-│       └── manager_test.go       # Testes de ciclo de vida e despacho
-├── web/
-│   ├── embed.go                  # Diretiva //go:embed para empacotar o frontend
-│   ├── embed_test.go             # Validação de integridade dos arquivos estáticos
-│   └── static/
-│       ├── index.html            # Shell do Command Hub e contêineres de vídeo
-│       ├── css/
-│       │   └── style.css         # Estilo HUD tático acelerado por GPU
-│       └── js/
-│           ├── clock.js          # AppleModularClock de alta precisão (SVG)
-│           ├── webrtc.js         # Negociação WHEP com auto-reconnect
-│           └── telemetry.js      # Consumidor de SSE com atualização via textContent
-├── .env.example                  # Template de segredos e credenciais
-├── config.example.yaml           # Exemplo de configuração declarativa
-├── go.mod
-├── go.sum
-└── README.md
+Como o servidor de produção é **sempre Linux**, o processo de compilação, instalação e gerenciamento como serviço do sistema é direto e padronizado.
+
+---
+
+### 1. Compilação do Binário Estático para Linux
+
+Se você estiver compilando diretamente no servidor Linux ou gerando o executável a partir de outra máquina (macOS / CI):
+
+#### Para servidores Linux convencionais (x86_64 / Intel / AMD):
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o argus cmd/server/main.go
 ```
 
+#### Para mini-PCs ARM ou Raspberry Pi 4/5 (Linux ARM64):
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o argus cmd/server/main.go
+```
+
+O arquivo gerado `argus` é 100% estático e não requer instalação do Go nem de bibliotecas no servidor de destino.
+
 ---
 
-## 🛠️ Configuração e Instalação
+### 2. Estrutura Padrão no Linux (`/opt/argus`)
 
-### 1. Configurar Variáveis de Ambiente (`.env`)
-
-Crie seu arquivo `.env` a partir do modelo `.env.example`:
+Recomenda-se instalar a aplicação no diretório `/opt/argus`:
 
 ```bash
-cp .env.example .env
+# 1. Cria o diretório da aplicação
+sudo mkdir -p /opt/argus
+
+# 2. Copia o binário compilado
+sudo cp argus /opt/argus/
+sudo chmod +x /opt/argus/argus
+
+# 3. Cria usuário de sistema dedicado (boa prática de segurança)
+sudo useradd -r -s /bin/false argus || true
+sudo chown -R argus:argus /opt/argus
 ```
 
-Edite o `.env` com suas credenciais sensíveis (senhas das câmeras e token da usina solar):
+---
+
+### 3. Configuração de Variáveis de Ambiente (`.env`)
+
+Crie o arquivo `/opt/argus/.env` com as credenciais sensíveis e senhas das câmeras:
+
+```bash
+sudo cp .env.example /opt/argus/.env
+sudo chmod 600 /opt/argus/.env
+sudo chown argus:argus /opt/argus/.env
+```
+
+Edite o arquivo `/opt/argus/.env`:
 
 ```ini
+# Interface de escuta e porta
 ARGUS_PORT=8080
 ARGUS_BIND_ADDRESS=0.0.0.0
 
 # Usina Solar (Huawei FusionSolar Kiosk)
 FUSIONSOLAR_ENABLED=true
-FUSIONSOLAR_TOKEN=SEU_TOKEN_AQUI
-FUSIONSOLAR_KIOSK_URL=https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html#/kiosk?kk=SEU_TOKEN_AQUI
+FUSIONSOLAR_TOKEN=EM6wrnyAhBtOFvD7rdNu045xGpwb1bGD
+FUSIONSOLAR_KIOSK_URL=https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html#/kiosk?kk=EM6wrnyAhBtOFvD7rdNu045xGpwb1bGD
 
-# Câmeras CFTV
+# Câmeras RTSP (Usuário e senha protegidos no servidor)
 CAM_1_RTSP=rtsp://admin:senha123@192.168.1.101:554/stream1
 CAM_2_RTSP=rtsp://admin:senha123@192.168.1.102:554/stream1
 CAM_3_RTSP=rtsp://admin:senha123@192.168.1.103:554/stream1
 ```
 
-### 2. Configurar Topologia (`config.yaml`)
+---
 
-Crie seu arquivo `config.yaml` a partir do modelo `config.example.yaml`:
+### 4. Configuração Declarativa de Câmeras (`config.yaml`)
+
+Crie o arquivo `/opt/argus/config.yaml`:
 
 ```bash
-cp config.example.yaml config.yaml
+sudo cp config.example.yaml /opt/argus/config.yaml
+sudo chown argus:argus /opt/argus/config.yaml
+```
+
+Conteúdo de `/opt/argus/config.yaml`:
+
+```yaml
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+
+cameras:
+  - id: "cam_frente"
+    name: "Câmera 01 — Frente / Portão"
+    rtsp_url: "${CAM_1_RTSP}"
+
+  - id: "cam_garagem"
+    name: "Câmera 02 — Garagem / Entrada"
+    rtsp_url: "${CAM_2_RTSP}"
+
+  - id: "cam_fundos"
+    name: "Câmera 03 — Fundos / Perímetro"
+    rtsp_url: "${CAM_3_RTSP}"
+
+solar:
+  poll_interval_minutes: 5
+
+weather:
+  enabled: true
+  latitude: -10.8778   # Exemplo: Ji-Paraná, RO
+  longitude: -61.9514
+  city_name: "Ji-Paraná, RO"
+  poll_interval_minutes: 30
 ```
 
 ---
 
-## 🧪 Testes e Verificação
+### 5. Configuração do Serviço no Linux (`systemd`)
 
-Para rodar todos os testes unitários e de integração:
+Para garantir que o Argus inicie automaticamente no boot do servidor Linux e reinicie sozinho em caso de oscilação de rede:
 
-```bash
-go test -v ./...
-go vet ./...
-```
-
----
-
-## 📦 Compilação Comercial Estática
-
-Para compilar o binário estático e otimizado sem símbolos de depuração:
-
-```bash
-CGO_ENABLED=0 go build -ldflags="-s -w" -o argus cmd/server/main.go
-```
-
-O binário `argus` resultante estará pronto para ser copiado para qualquer máquina Linux/macOS ou distribuído comercialmente.
-
----
-
-## 🚀 Implantação como Serviço de Sistema (Linux `systemd`)
-
-Para executar o Argus continuamente em segundo plano em mini-PCs e servidores Linux:
-
-Crie o arquivo `/etc/systemd/system/argus.service`:
+Crie o arquivo de unidade `/etc/systemd/system/argus.service`:
 
 ```ini
 [Unit]
 Description=Argus CCTV Command Hub
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=argus
+Group=argus
 WorkingDirectory=/opt/argus
 ExecStart=/opt/argus/argus -config /opt/argus/config.yaml
 Restart=always
 RestartSec=3
+LimitNOFILE=65535
+
+# Proteções de segurança no Linux
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Ative e inicie o serviço:
+Habilite e gerencie o serviço com os comandos do `systemd`:
 
 ```bash
+# Recarrega as definições do systemd
 sudo systemctl daemon-reload
-sudo systemctl enable --now argus
+
+# Habilita inicialização automática com o sistema
+sudo systemctl enable argus
+
+# Inicia o serviço
+sudo systemctl start argus
+
+# Verifica o status e saúde do processo
+sudo systemctl status argus
+
+# Monitora os logs em tempo real
+sudo journalctl -u argus -f
 ```
 
-Acesse o painel em qualquer TV ou navegador na rede local:
+---
+
+### 6. Configuração de Firewall no Servidor Linux
+
+Se o servidor Linux possuir firewall ativo:
+
+#### No Ubuntu / Debian (`ufw`):
+```bash
+sudo ufw allow 8080/tcp comment 'Argus CCTV Command Hub'
+sudo ufw reload
 ```
-http://IP_DO_SERVIDOR:8080
+
+#### No CentOS / Rocky / Fedora (`firewalld`):
+```bash
+sudo firewall-cmd --permanent --add-port=8080/tcp
+sudo firewall-cmd --reload
+```
+
+---
+
+### 7. Como Acessar e Usar na TV ou Quiosque
+
+1. Conecte a Smart TV, TV Box ou Raspberry Pi na mesma rede local do servidor Linux.
+2. Abra o navegador da TV e acesse:
+   ```text
+   http://IP_DO_SERVIDOR_LINUX:8080
+   ```
+3. Pressione a tecla **F11** no teclado ou dê um **duplo clique** em qualquer área da tela para entrar no modo tela cheia de monitoramento contínuo.
+4. O cursor do mouse desaparecerá automaticamente após 3 segundos de inatividade para exibição limpa.
+
+---
+
+### 💡 Dica: Inicialização Automática de Quiosque no Linux (Kiosk Mode)
+
+Se você tiver um mini-PC Linux ou Raspberry Pi conectado diretamente à TV via cabo HDMI:
+
+```bash
+chromium-browser --kiosk --noerrdialogs --disable-infobars --check-for-update-interval=31536000 http://localhost:8080
+```
+
+---
+
+## 🧪 Comandos de Teste e Validação
+
+Para validar o código e verificar a integridade de todos os submódulos:
+
+```bash
+go test -v ./...
+go vet ./...
 ```
