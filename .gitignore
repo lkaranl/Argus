@@ -1,0 +1,21 @@
+# Binários e executáveis
+argus
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Variáveis de ambiente e segredos locais
+.env
+*.local
+dados_solar.json
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDE e logs
+.idea/
+.vscode/
+*.log
