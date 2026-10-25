@@ -24,20 +24,12 @@ class WHEPPlayer {
     this.reconnectDelay = 1200;
     this.maxReconnectDelay = 3500;
     this.isConnecting = false;
-    this.isPlayPending = false;
+    this.playPendingUntil = 0;
     this.connectedAt = 0;
     this.lastTimeUpdate = 0;
     this.lastCurrentTime = -1;
     this.lastDecodedFrames = -1;
     this.lastFrameProgressAt = 0;
-
-    // Fallback de renderização via <canvas> (MediaStreamTrackProcessor / ImageCapture)
-    // para navegadores/TVs que bloqueiam <video>.play() sem clique de mouse
-    this.canvas = null;
-    this.canvasCtx = null;
-    this.canvasActive = false;
-    this.canvasReader = null;
-    this.canvasFrames = 0;
 
     // Contadores para cálculo de FPS a cada 1s
     this.rvfcFrames = 0;
@@ -73,20 +65,14 @@ class WHEPPlayer {
     this.video.setAttribute("playsinline", "");
     this.video.setAttribute("webkit-playsinline", "");
 
-    // Cria elemento <canvas> de fallback dentro do container para renderização zero-click
-    if (this.video.parentElement && !this.canvas) {
-      this.canvas = document.createElement("canvas");
-      this.canvas.className = "video-canvas";
-      this.video.parentElement.insertBefore(this.canvas, this.video.nextSibling);
-      this.canvasCtx = this.canvas.getContext("2d", { alpha: false, desynchronized: true });
-    }
-
     const triggerPlay = () => {
+      this.playPendingUntil = 0;
       this.tryPlay();
     };
 
     this.video.addEventListener("loadedmetadata", triggerPlay);
     this.video.addEventListener("loadeddata", () => {
+      this.playPendingUntil = 0;
       this.tryPlay();
       if (!this.video.paused && this.video.readyState >= 2) {
         this.updateStatus("ONLINE", "", "online");
@@ -99,7 +85,6 @@ class WHEPPlayer {
       this.lastTimeUpdate = Date.now();
       this.lastFrameProgressAt = Date.now();
       if (this.video.readyState >= 2) {
-        this.stopCanvasFallback();
         this.stopPlayRetryLoop();
         this.updateStatus("ONLINE", "", "online");
       }
@@ -110,7 +95,6 @@ class WHEPPlayer {
         this.lastCurrentTime = this.video.currentTime;
         this.lastTimeUpdate = Date.now();
         this.lastFrameProgressAt = Date.now();
-        this.stopCanvasFallback();
         this.stopPlayRetryLoop();
         this.updateStatus("ONLINE", "", "online");
       }
@@ -119,6 +103,7 @@ class WHEPPlayer {
     // Se a TV ou o navegador tentar pausar o vídeo automaticamente, retoma na hora
     this.video.addEventListener("pause", () => {
       if (this.video.srcObject && !document.hidden) {
+        this.playPendingUntil = 0;
         setTimeout(() => this.tryPlay(), 100);
       }
     });
@@ -138,7 +123,6 @@ class WHEPPlayer {
   }
 
   isVideoRendering() {
-    if (this.canvasActive && this.canvasFrames > 0) return true;
     if (!this.video || !this.video.srcObject || this.video.paused) return false;
     return (
       this.video.readyState >= 2 &&
@@ -150,169 +134,41 @@ class WHEPPlayer {
     if (!this.video || !this.video.srcObject) return;
     this.enforceMutedState();
 
-    // Se já está reproduzindo e decodificando quadros no <video>, apenas garante overlay oculto
-    if (!this.video.paused && this.video.readyState >= 2 && (this.getDecodedFrameCount() > 0 || this.video.currentTime > 0)) {
-      this.stopCanvasFallback();
+    // Se já está reproduzindo e com dados de quadro prontos no <video>, oculta overlay e encerra loop
+    if (!this.video.paused && this.video.readyState >= 2) {
       this.stopPlayRetryLoop();
       this.updateStatus("ONLINE", "", "online");
       return;
     }
 
-    // Evita chamadas concorrentes a video.play() que geram AbortError no navegador
-    if (this.isPlayPending) return;
-    this.isPlayPending = true;
+    // Evita chamadas concorrentes na mesma janela de 250ms, mas nunca trava indefinidamente
+    const now = Date.now();
+    if (now < this.playPendingUntil) return;
+    this.playPendingUntil = now + 250;
 
     try {
       const playPromise = this.video.play();
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
-            this.isPlayPending = false;
+            this.playPendingUntil = 0;
             if (!this.video.paused && this.video.readyState >= 2) {
-              this.stopCanvasFallback();
               this.stopPlayRetryLoop();
               this.updateStatus("ONLINE", "", "online");
             } else {
-              // play() resolveu antes do primeiro Keyframe chegar; mantém loop até readyState >= 2
               this.startPlayRetryLoop();
             }
           })
-          .catch((err) => {
-            this.isPlayPending = false;
-            // Se o navegador bloquear <video>.play() por falta de clique (NotAllowedError),
-            // ativa imediatamente a renderização direta via <canvas> sem precisar de mouse!
-            if (err && err.name === "NotAllowedError") {
-              this.startCanvasFallback();
-            }
+          .catch(() => {
+            this.playPendingUntil = 0;
             this.startPlayRetryLoop();
           });
       } else {
-        this.isPlayPending = false;
+        this.playPendingUntil = 0;
       }
     } catch (e) {
-      this.isPlayPending = false;
+      this.playPendingUntil = 0;
       this.startPlayRetryLoop();
-    }
-  }
-
-  /**
-   * Renderizador direto de MediaStreamTrack para <canvas> (Zero-Click Fallback).
-   * Ignora completamente o bloqueio de Autoplay do elemento <video> em clientes sem mouse.
-   */
-  async startCanvasFallback() {
-    if (this.canvasActive || !this.inboundTrack || !this.canvas || !this.canvasCtx) return;
-    if (this.inboundTrack.readyState === "ended") return;
-
-    // 1. MediaStreamTrackProcessor (WebCodecs / Chromium / Edge / Brave / Android TV / WebOS)
-    if (typeof window.MediaStreamTrackProcessor === "function") {
-      try {
-        this.canvasActive = true;
-        this.canvas.classList.add("active");
-        const processor = new window.MediaStreamTrackProcessor({ track: this.inboundTrack });
-        const reader = processor.readable.getReader();
-        this.canvasReader = reader;
-
-        while (this.canvasActive) {
-          const { value: frame, done } = await reader.read();
-          if (done || !frame) break;
-
-          const fw = frame.displayWidth || frame.codedWidth || 1280;
-          const fh = frame.displayHeight || frame.codedHeight || 720;
-          if (this.canvas.width !== fw || this.canvas.height !== fh) {
-            this.canvas.width = fw;
-            this.canvas.height = fh;
-          }
-
-          this.canvasCtx.drawImage(frame, 0, 0, fw, fh);
-          frame.close();
-
-          this.canvasFrames++;
-          this.lastFrameProgressAt = Date.now();
-          this.lastTimeUpdate = Date.now();
-          this.updateStatus("ONLINE", "", "online");
-        }
-      } catch (e) {
-      } finally {
-        this.canvasActive = false;
-      }
-      return;
-    }
-
-    // 2. ImageCapture API fallback
-    if (typeof window.ImageCapture === "function") {
-      try {
-        this.canvasActive = true;
-        this.canvas.classList.add("active");
-        const imageCapture = new window.ImageCapture(this.inboundTrack);
-
-        const grabLoop = async () => {
-          while (this.canvasActive && this.inboundTrack && this.inboundTrack.readyState === "live") {
-            try {
-              const bitmap = await imageCapture.grabFrame();
-              if (this.canvas.width !== bitmap.width || this.canvas.height !== bitmap.height) {
-                this.canvas.width = bitmap.width;
-                this.canvas.height = bitmap.height;
-              }
-              this.canvasCtx.drawImage(bitmap, 0, 0);
-              bitmap.close();
-              this.canvasFrames++;
-              this.lastFrameProgressAt = Date.now();
-              this.lastTimeUpdate = Date.now();
-              this.updateStatus("ONLINE", "", "online");
-            } catch (err) {
-              await new Promise((r) => setTimeout(r, 80));
-            }
-          }
-          this.canvasActive = false;
-        };
-        grabLoop();
-      } catch (e) {
-        this.canvasActive = false;
-      }
-      return;
-    }
-
-    // 3. Fallback universal para Firefox Kiosk (Gecko VideoFrameContainer -> Canvas 2D)
-    // No Firefox, mesmo se <video>.play() for bloqueado por falta de clique/foco X11,
-    // o VideoFrameContainer da MediaStream WebRTC continua recebendo os quadros ao vivo
-    this.canvasActive = true;
-    this.canvas.classList.add("active");
-    const drawFirefoxLoop = () => {
-      if (!this.canvasActive || !this.inboundTrack || this.inboundTrack.readyState === "ended") {
-        this.canvasActive = false;
-        return;
-      }
-      if (this.video && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-        const vw = this.video.videoWidth;
-        const vh = this.video.videoHeight;
-        if (this.canvas.width !== vw || this.canvas.height !== vh) {
-          this.canvas.width = vw;
-          this.canvas.height = vh;
-        }
-        try {
-          this.canvasCtx.drawImage(this.video, 0, 0, vw, vh);
-          this.canvasFrames++;
-          this.lastFrameProgressAt = Date.now();
-          this.lastTimeUpdate = Date.now();
-          this.updateStatus("ONLINE", "", "online");
-        } catch (e) {}
-      }
-      setTimeout(drawFirefoxLoop, 66); // ~15 FPS no fallback de canvas
-    };
-    drawFirefoxLoop();
-  }
-
-  stopCanvasFallback() {
-    if (!this.canvasActive && (!this.canvas || !this.canvas.classList.contains("active"))) return;
-    this.canvasActive = false;
-    if (this.canvasReader) {
-      try {
-        this.canvasReader.cancel();
-      } catch (e) {}
-      this.canvasReader = null;
-    }
-    if (this.canvas) {
-      this.canvas.classList.remove("active");
     }
   }
 
@@ -323,7 +179,7 @@ class WHEPPlayer {
         this.stopPlayRetryLoop();
         return;
       }
-      if (this.isVideoRendering() && !this.canvasActive) {
+      if (!this.video.paused && this.video.readyState >= 2) {
         this.stopPlayRetryLoop();
         this.updateStatus("ONLINE", "", "online");
         return;
@@ -395,11 +251,7 @@ class WHEPPlayer {
       const rvfcFps = Math.round(this.rvfcFrames / elapsedSec);
       this.rvfcFrames = 0;
 
-      // 2. Contagem via fallback <canvas>
-      const canvasFps = Math.round(this.canvasFrames / elapsedSec);
-      this.canvasFrames = 0;
-
-      // 3. Contagem via getVideoPlaybackQuality / webkitDecodedFrameCount
+      // 2. Contagem via getVideoPlaybackQuality / webkitDecodedFrameCount / mozPresentedFrames
       let qualityFps = 0;
       const total = this.getDecodedFrameCount();
       if (total > 0) {
@@ -409,7 +261,7 @@ class WHEPPlayer {
         this.prevTotalFrames = total;
       }
 
-      // 4. Contagem nativa do motor WebRTC C++ (inbound-rtp framesPerSecond / framesDecoded)
+      // 3. Contagem nativa do motor WebRTC C++ (inbound-rtp framesPerSecond / framesDecoded)
       let rtcFps = 0;
       if (this.pc) {
         try {
@@ -431,24 +283,20 @@ class WHEPPlayer {
         } catch (e) {}
       }
 
-      // Se o motor WebRTC já está decodificando quadros (rtcFps > 0), mas o <video> ainda não iniciou,
-      // força tryPlay() e aciona o fallback em <canvas> caso o <video> continue bloqueado
+      // Se o motor WebRTC já está decodificando quadros (rtcFps > 0), garante que o <video> esteja reproduzindo
       if (rtcFps > 0) {
         this.lastFrameProgressAt = Date.now();
         this.lastTimeUpdate = Date.now();
         if (!this.isVideoRendering()) {
           this.tryPlay();
-          if (this.video && this.video.paused) {
-            this.startCanvasFallback();
-          }
         } else {
           this.updateStatus("ONLINE", "", "online");
         }
       }
 
-      let fps = Math.max(rvfcFps, qualityFps, rtcFps, canvasFps);
+      let fps = Math.max(rvfcFps, qualityFps, rtcFps);
 
-      if (!this.canvasActive && rtcFps === 0 && (!this.video || this.video.paused || !this.video.srcObject)) {
+      if (rtcFps === 0 && (!this.video || this.video.paused || !this.video.srcObject)) {
         fps = 0;
       }
 
@@ -521,9 +369,8 @@ class WHEPPlayer {
   async connect() {
     if (this.isConnecting) return;
     this.isConnecting = true;
-    this.isPlayPending = false;
+    this.playPendingUntil = 0;
     this.stopPlayRetryLoop();
-    this.stopCanvasFallback();
     this.lastDecodedFrames = -1;
     this.prevTotalFrames = 0;
     this.prevRtcDecodedFrames = 0;
@@ -574,10 +421,11 @@ class WHEPPlayer {
         this.enforceMutedState();
 
         event.track.onunmute = () => {
-          this.isPlayPending = false;
+          this.playPendingUntil = 0;
           this.tryPlay();
         };
 
+        this.playPendingUntil = 0;
         this.tryPlay();
         this.startPlayRetryLoop();
       };
@@ -724,6 +572,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const resumeAllCameras = () => {
     if (!window.argusPlayers) return;
     Object.values(window.argusPlayers).forEach((player) => {
+      player.playPendingUntil = 0;
       player.tryPlay();
     });
   };
