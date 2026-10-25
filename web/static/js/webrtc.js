@@ -65,29 +65,26 @@ class WHEPPlayer {
     this.video.setAttribute("playsinline", "");
     this.video.setAttribute("webkit-playsinline", "");
 
-    const triggerPlay = () => {
-      this.playPendingUntil = 0;
-      this.tryPlay();
+    const onMediaReady = () => {
+      if (!this.video.paused) {
+        this.stopPlayRetryLoop();
+        this.updateStatus("ONLINE", "", "online");
+      } else if (this.video.readyState >= 1) {
+        this.playPendingUntil = 0;
+        this.tryPlay();
+      }
     };
 
-    this.video.addEventListener("loadedmetadata", triggerPlay);
-    this.video.addEventListener("loadeddata", () => {
-      this.playPendingUntil = 0;
-      this.tryPlay();
-      if (!this.video.paused && this.video.readyState >= 2) {
-        this.updateStatus("ONLINE", "", "online");
-      }
-    });
-    this.video.addEventListener("canplay", triggerPlay);
-    this.video.addEventListener("canplaythrough", triggerPlay);
+    this.video.addEventListener("loadedmetadata", onMediaReady);
+    this.video.addEventListener("loadeddata", onMediaReady);
+    this.video.addEventListener("canplay", onMediaReady);
+    this.video.addEventListener("canplaythrough", onMediaReady);
 
     this.video.addEventListener("playing", () => {
       this.lastTimeUpdate = Date.now();
       this.lastFrameProgressAt = Date.now();
-      if (this.video.readyState >= 2) {
-        this.stopPlayRetryLoop();
-        this.updateStatus("ONLINE", "", "online");
-      }
+      this.stopPlayRetryLoop();
+      this.updateStatus("ONLINE", "", "online");
     });
 
     this.video.addEventListener("timeupdate", () => {
@@ -100,17 +97,11 @@ class WHEPPlayer {
       }
     });
 
-    // Se a TV ou o navegador tentar pausar o vídeo automaticamente, retoma na hora
+    // Se a TV ou o navegador tentar pausar o vídeo automaticamente após já ter carregado metadados, retoma
     this.video.addEventListener("pause", () => {
-      if (this.video.srcObject && !document.hidden) {
+      if (this.video.srcObject && this.video.readyState >= 1 && !document.hidden) {
         this.playPendingUntil = 0;
         setTimeout(() => this.tryPlay(), 100);
-      }
-    });
-
-    this.video.addEventListener("suspend", () => {
-      if (!this.isVideoRendering() && this.video.srcObject) {
-        this.tryPlay();
       }
     });
   }
@@ -120,6 +111,8 @@ class WHEPPlayer {
     if (!this.video.muted) this.video.muted = true;
     if (!this.video.defaultMuted) this.video.defaultMuted = true;
     if (this.video.volume !== 0) this.video.volume = 0;
+    if (!this.video.autoplay) this.video.autoplay = true;
+    if (!this.video.playsInline) this.video.playsInline = true;
   }
 
   isVideoRendering() {
@@ -130,21 +123,30 @@ class WHEPPlayer {
     );
   }
 
-  tryPlay() {
+  tryPlay(fromUserGesture = false) {
     if (!this.video || !this.video.srcObject) return;
     this.enforceMutedState();
 
-    // Se já está reproduzindo e com dados de quadro prontos no <video>, oculta overlay e encerra loop
-    if (!this.video.paused && this.video.readyState >= 2) {
-      this.stopPlayRetryLoop();
-      this.updateStatus("ONLINE", "", "online");
+    // Se o vídeo já não está pausado (autoplay nativo do Safari/Firefox em ação),
+    // NUNCA chame video.play() novamente para não cancelar o m_autoPlay interno do WebKit/Gecko
+    if (!this.video.paused) {
+      if (this.video.readyState >= 1) {
+        this.stopPlayRetryLoop();
+        this.updateStatus("ONLINE", "", "online");
+      }
       return;
     }
 
-    // Evita chamadas concorrentes na mesma janela de 250ms, mas nunca trava indefinidamente
+    // Nunca chame video.play() enquanto readyState === 0 (antes de loadedmetadata):
+    // no Safari e no Firefox, chamar play() antes do MediaStream receber o primeiro frame
+    // lança NotAllowedError e desativa o autoplay nativo do elemento <video>
+    if (!fromUserGesture && this.video.readyState < 1) {
+      return;
+    }
+
     const now = Date.now();
-    if (now < this.playPendingUntil) return;
-    this.playPendingUntil = now + 250;
+    if (!fromUserGesture && now < this.playPendingUntil) return;
+    this.playPendingUntil = now + 300;
 
     try {
       const playPromise = this.video.play();
@@ -152,12 +154,8 @@ class WHEPPlayer {
         playPromise
           .then(() => {
             this.playPendingUntil = 0;
-            if (!this.video.paused && this.video.readyState >= 2) {
-              this.stopPlayRetryLoop();
-              this.updateStatus("ONLINE", "", "online");
-            } else {
-              this.startPlayRetryLoop();
-            }
+            this.stopPlayRetryLoop();
+            this.updateStatus("ONLINE", "", "online");
           })
           .catch(() => {
             this.playPendingUntil = 0;
@@ -165,6 +163,7 @@ class WHEPPlayer {
           });
       } else {
         this.playPendingUntil = 0;
+        this.updateStatus("ONLINE", "", "online");
       }
     } catch (e) {
       this.playPendingUntil = 0;
@@ -179,13 +178,15 @@ class WHEPPlayer {
         this.stopPlayRetryLoop();
         return;
       }
-      if (!this.video.paused && this.video.readyState >= 2) {
+      if (!this.video.paused && this.video.readyState >= 1) {
         this.stopPlayRetryLoop();
         this.updateStatus("ONLINE", "", "online");
         return;
       }
-      this.tryPlay();
-    }, 350);
+      if (this.video.readyState >= 1 && this.video.paused) {
+        this.tryPlay();
+      }
+    }, 400);
   }
 
   stopPlayRetryLoop() {
@@ -418,15 +419,9 @@ class WHEPPlayer {
         this.inboundStream = inboundStream;
         this.enforceMutedState();
         this.video.srcObject = inboundStream;
-        this.enforceMutedState();
 
-        event.track.onunmute = () => {
-          this.playPendingUntil = 0;
-          this.tryPlay();
-        };
-
-        this.playPendingUntil = 0;
-        this.tryPlay();
+        // Não chama video.play() sincronicamente aqui (readyState === 0):
+        // aguarda o primeiro frame (loadedmetadata / loadeddata / canplay) para preservar o autoplay nativo do Safari e Firefox
         this.startPlayRetryLoop();
       };
 
@@ -435,7 +430,9 @@ class WHEPPlayer {
           this.reconnectDelay = 1200;
           if (this.connectedAt === 0) this.connectedAt = Date.now();
           this.lastFrameProgressAt = Date.now();
-          this.tryPlay();
+          if (this.video && this.video.readyState >= 1) {
+            this.tryPlay();
+          }
         } else if (state === "disconnected" || state === "failed" || state === "closed") {
           this.updateStatus("RECONECTANDO", "Sinal interrompido...", "offline");
           this.scheduleReconnect();
@@ -452,10 +449,7 @@ class WHEPPlayer {
         handleConnState(this.pc.iceConnectionState);
       };
 
-      const offer = await this.pc.createOffer({
-        offerToReceiveVideo: true,
-        offerToReceiveAudio: false,
-      });
+      const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
 
       // Aguarda coleta de candidatos ICE locais (essencial para Firefox Kiosk enviar a=candidate no SDP Offer)
@@ -508,7 +502,6 @@ class WHEPPlayer {
       });
 
       this.isConnecting = false;
-      this.tryPlay();
     } catch (err) {
       this.isConnecting = false;
       this.updateStatus("SEM SINAL", "Reconectando...", "offline");
@@ -569,25 +562,25 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Retoma reprodução automática de todas as câmeras ao voltar do standby da TV ou qualquer tecla do controle remoto
-  const resumeAllCameras = () => {
+  const resumeAllCameras = (fromGesture = false) => {
     if (!window.argusPlayers) return;
     Object.values(window.argusPlayers).forEach((player) => {
       player.playPendingUntil = 0;
-      player.tryPlay();
+      player.tryPlay(fromGesture === true);
     });
   };
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
-      resumeAllCameras();
+      resumeAllCameras(false);
       requestTVWakeLock();
     }
   });
-  window.addEventListener("focus", resumeAllCameras);
-  window.addEventListener("pageshow", resumeAllCameras);
-  document.addEventListener("keydown", resumeAllCameras);
-  document.addEventListener("click", resumeAllCameras);
-  document.addEventListener("touchstart", resumeAllCameras, { passive: true });
+  window.addEventListener("focus", () => resumeAllCameras(false));
+  window.addEventListener("pageshow", () => resumeAllCameras(false));
+  document.addEventListener("keydown", () => resumeAllCameras(true));
+  document.addEventListener("click", () => resumeAllCameras(true));
+  document.addEventListener("touchstart", () => resumeAllCameras(true), { passive: true });
 
   // Reconexão imediata quando a interface Wi-Fi da TV recuperar sinal após queda ou interferência de RF
   window.addEventListener("online", () => {
