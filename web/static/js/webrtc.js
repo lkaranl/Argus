@@ -5,17 +5,20 @@
  */
 
 class WHEPPlayer {
-  constructor(cameraId, videoElement, badgeElement, overlayElement, statusTextElement) {
+  constructor(cameraId, videoElement, badgeElement, overlayElement, statusTextElement, fpsBadgeElement) {
     this.cameraId = cameraId;
     this.video = videoElement;
     this.badge = badgeElement;
     this.overlay = overlayElement;
     this.statusText = statusTextElement;
+    this.fpsBadge = fpsBadgeElement;
+    this.fpsValEl = fpsBadgeElement ? fpsBadgeElement.querySelector(".fps-val") : null;
 
     this.pc = null;
     this.reconnectTimer = null;
     this.playRetryTimer = null;
     this.watchdogTimer = null;
+    this.fpsTimer = null;
     this.reconnectDelay = 1200;
     this.maxReconnectDelay = 3500;
     this.isConnecting = false;
@@ -25,7 +28,14 @@ class WHEPPlayer {
     this.lastDecodedFrames = -1;
     this.lastFrameProgressAt = 0;
 
+    // Contadores para cálculo de FPS a cada 1s
+    this.rvfcFrames = 0;
+    this.prevTotalFrames = 0;
+    this.prevFpsTimestamp = performance.now();
+    this.currentFps = 0;
+
     this.configureVideoElement();
+    this.startFpsMonitor();
     this.startWatchdog();
     this.connect();
   }
@@ -149,6 +159,80 @@ class WHEPPlayer {
       return this.video.webkitDecodedFrameCount;
     }
     return 0;
+  }
+
+  /**
+   * Monitora e atualiza o indicador discreto de FPS a cada 1 segundo.
+   * Verde (fps-active) quando >= 1 FPS; Vermelho (fps-zero) quando 0 FPS.
+   */
+  startFpsMonitor() {
+    if (this.video && typeof this.video.requestVideoFrameCallback === "function") {
+      const onFrame = () => {
+        this.rvfcFrames++;
+        if (this.video) {
+          this.video.requestVideoFrameCallback(onFrame);
+        }
+      };
+      this.video.requestVideoFrameCallback(onFrame);
+    }
+
+    if (this.fpsTimer) clearInterval(this.fpsTimer);
+    this.fpsTimer = setInterval(async () => {
+      const now = performance.now();
+      const elapsedSec = Math.max((now - this.prevFpsTimestamp) / 1000, 0.5);
+      this.prevFpsTimestamp = now;
+
+      let fps = 0;
+
+      if (this.rvfcFrames > 0) {
+        fps = Math.round(this.rvfcFrames / elapsedSec);
+        this.rvfcFrames = 0;
+      } else {
+        const total = this.getDecodedFrameCount();
+        if (total > 0 && this.prevTotalFrames > 0 && total >= this.prevTotalFrames) {
+          fps = Math.round((total - this.prevTotalFrames) / elapsedSec);
+        }
+        this.prevTotalFrames = total;
+
+        // Fallback via estatísticas WebRTC inbound-rtp caso a TV não exponha totalVideoFrames
+        if (fps === 0 && this.pc && this.pc.connectionState === "connected") {
+          try {
+            const stats = await this.pc.getStats();
+            stats.forEach((report) => {
+              if (report.type === "inbound-rtp" && report.kind === "video") {
+                if (typeof report.framesPerSecond === "number") {
+                  fps = Math.round(report.framesPerSecond);
+                }
+              }
+            });
+          } catch (e) {}
+        }
+      }
+
+      if (this.video && (this.video.paused || !this.video.srcObject)) {
+        fps = 0;
+      }
+
+      this.currentFps = fps;
+      this.renderFpsBadge(fps);
+    }, 1000);
+  }
+
+  renderFpsBadge(fps) {
+    if (!this.fpsBadge) return;
+    if (this.fpsValEl) {
+      this.fpsValEl.textContent = `${fps} FPS`;
+    } else {
+      this.fpsBadge.textContent = `${fps} FPS`;
+    }
+
+    if (fps >= 1) {
+      this.fpsBadge.classList.add("fps-active");
+      this.fpsBadge.classList.remove("fps-zero");
+    } else {
+      this.fpsBadge.classList.add("fps-zero");
+      this.fpsBadge.classList.remove("fps-active");
+    }
   }
 
   /**
@@ -349,9 +433,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const badge = document.getElementById(`cam-badge-${camId}`);
     const overlay = document.getElementById(`overlay-${camId}`);
     const statusText = document.getElementById(`status-text-${camId}`);
+    const fpsBadge = document.getElementById(`fps-${camId}`);
 
     if (video) {
-      window.argusPlayers[camId] = new WHEPPlayer(camId, video, badge, overlay, statusText);
+      window.argusPlayers[camId] = new WHEPPlayer(camId, video, badge, overlay, statusText, fpsBadge);
     }
   });
 
