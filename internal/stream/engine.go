@@ -374,6 +374,12 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			Transport:    &transport,
 			ReadTimeout:  8 * time.Second,
 			WriteTimeout: 8 * time.Second,
+			OnDecodeError: func(err error) {
+				// Silencia avisos benignos de pacotes RTCP vazios/curtos enviados pelo firmware da câmera
+				if err != nil && !strings.Contains(err.Error(), "rtcp:") {
+					log.Printf("[RTSP] Aviso de decodificação (%s): %v", cam.id, err)
+				}
+			},
 			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 				c, err := dialer.DialContext(ctx, network, address)
 				if err != nil {
