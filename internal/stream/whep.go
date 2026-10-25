@@ -32,7 +32,7 @@ func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
 	}
 
 	for _, cand := range candidates {
-		go2rtcURL := fmt.Sprintf("http://127.0.0.1:1984/api/whep?src=%s", cand)
+		go2rtcURL := fmt.Sprintf("http://127.0.0.1:1984/api/whep?src=%s&media=video", cand)
 		req, err := http.NewRequest(http.MethodPost, go2rtcURL, bytes.NewReader(sdpOffer))
 		if err != nil {
 			continue

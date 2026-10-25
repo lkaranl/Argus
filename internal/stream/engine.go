@@ -31,7 +31,6 @@ type cameraStream struct {
 	cancel         context.CancelFunc
 	packetCount    uint64
 	lastPacketNano atomic.Int64
-	seqNumber      uint32
 	stateMu        sync.RWMutex
 	lastError      string
 	codecInfo      string
@@ -78,33 +77,36 @@ type Engine struct {
 func NewEngine(cameras []config.CameraConfig) *Engine {
 	m := &webrtc.MediaEngine{}
 
-	// Registra suporte a H.264
+	videoRTCPFeedback := []webrtc.RTCPFeedback{
+		{Type: "goog-remb", Parameter: ""},
+		{Type: "ccm", Parameter: "fir"},
+		{Type: "nack", Parameter: ""},
+		{Type: "nack", Parameter: "pli"},
+	}
+
+	// Registra suporte a H.264 com feedback RTCP completo para fluidez máxima (30/60 FPS)
 	_ = m.RegisterCodec(webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType:     webrtc.MimeTypeH264,
 			ClockRate:    90000,
 			Channels:     0,
 			SDPFmtpLine:  "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
-			RTCPFeedback: nil,
+			RTCPFeedback: videoRTCPFeedback,
 		},
 		PayloadType: 96,
 	}, webrtc.RTPCodecTypeVideo)
 
-	// Registra suporte a H.265 (HEVC)
+	// Registra suporte a H.265 (HEVC) com feedback RTCP completo
 	_ = m.RegisterCodec(webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType:     webrtc.MimeTypeH265,
 			ClockRate:    90000,
 			Channels:     0,
 			SDPFmtpLine:  "",
-			RTCPFeedback: nil,
+			RTCPFeedback: videoRTCPFeedback,
 		},
 		PayloadType: 98,
 	}, webrtc.RTPCodecTypeVideo)
-
-	if err := m.RegisterDefaultCodecs(); err != nil {
-		log.Printf("[Stream] Aviso ao registrar codecs padrão: %v", err)
-	}
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
 
@@ -261,13 +263,12 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			continue
 		}
 
-		// Utiliza RTSP over TCP com timeouts curtos (4s) para detectar rapidamente
-		// congelamentos por interferência de RF em 2.4GHz e reconectar imediatamente quando o sinal voltar
+		// Utiliza RTSP over TCP para máxima estabilidade de quadros (P-frames e I-frames íntegros)
 		transport := gortsplib.TransportTCP
 		client := &gortsplib.Client{
 			Transport:    &transport,
-			ReadTimeout:  4 * time.Second,
-			WriteTimeout: 4 * time.Second,
+			ReadTimeout:  8 * time.Second,
+			WriteTimeout: 8 * time.Second,
 		}
 
 		err = client.Start(u.Scheme, u.Host)
@@ -287,7 +288,8 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			continue
 		}
 
-		// Localiza track de vídeo H.265 ou H.264
+		// Localiza exclusivamente a track de vídeo (H.265 ou H.264)
+		// Ignora tracks de áudio/metadados para economizar banda 2.4GHz e preservar SequenceNumber contínuo
 		var formaH264 *format.H264
 		var formaH265 *format.H265
 		mediH264 := desc.FindFormat(&formaH264)
@@ -295,15 +297,28 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 
 		wasH265 := cam.isH265.Load()
 		var codecName string
+		var selectedMedia *description.Media
+		var selectedFormat format.Format
+		var targetTrack *webrtc.TrackLocalStaticRTP
+		var targetPT uint8
+
 		if mediH265 != nil {
 			cam.isH265.Store(true)
 			codecName = fmt.Sprintf("H.265 (PT %d)", formaH265.PayloadType())
 			cam.setCodecInfo(codecName)
+			selectedMedia = mediH265
+			selectedFormat = formaH265
+			targetTrack = cam.trackH265
+			targetPT = 98
 			log.Printf("[RTSP] ✓ Codec H.265 (HEVC) detectado para %s (%s)", cam.id, cam.name)
 		} else if mediH264 != nil {
 			cam.isH265.Store(false)
 			codecName = fmt.Sprintf("H.264 (PT %d)", formaH264.PayloadType())
 			cam.setCodecInfo(codecName)
+			selectedMedia = mediH264
+			selectedFormat = formaH264
+			targetTrack = cam.trackH264
+			targetPT = 96
 			log.Printf("[RTSP] ✓ Codec H.264 detectado para %s (%s)", cam.id, cam.name)
 		} else {
 			cam.setError("Nenhum codec de vídeo H.264 ou H.265 encontrado no SDP da câmera")
@@ -313,44 +328,34 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			continue
 		}
 
-		// Se o codec detectado mudou ou a câmera reconectou após queda de RF,
-		// encerra sessões WebRTC antigas para forçar renegociação limpa na TV
 		if wasH265 != cam.isH265.Load() {
 			cam.closeAllSessions()
 		}
 
-		err = client.SetupAll(desc.BaseURL, desc.Medias)
+		// Faz SETUP apenas da mídia de vídeo (não requisita áudio da câmera)
+		_, err = client.Setup(desc.BaseURL, selectedMedia, 0, 0)
 		if err != nil {
-			cam.setError(fmt.Sprintf("Falha no SETUP: %v", err))
+			cam.setError(fmt.Sprintf("Falha no SETUP de vídeo: %v", err))
 			log.Printf("[RTSP] Falha no SETUP de %s: %v", cam.id, err)
 			client.Close()
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		// Repasse direto zero-copy e lock-free de RTP para o WebRTC Pion
-		// Reescreve SequenceNumber de forma monotônica para evitar congelamento do SRTP/Jitter Buffer após micro-cortes de RF
-		client.OnPacketRTPAny(func(m *description.Media, f format.Format, pkt *rtp.Packet) {
+		// Repasse direto zero-copy e lock-free somente dos pacotes RTP de vídeo originais da câmera
+		client.OnPacketRTP(selectedMedia, selectedFormat, func(pkt *rtp.Packet) {
 			if !cam.connected.Load() {
 				cam.connected.Store(true)
 				cam.setError("")
 			}
 			cnt := atomic.AddUint64(&cam.packetCount, 1)
-			if cnt == 1 || cnt%30 == 0 {
+			if cnt == 1 || cnt%60 == 0 {
 				cam.lastPacketNano.Store(time.Now().UnixNano())
 			}
 
 			p := *pkt
-			seq := uint16(atomic.AddUint32(&cam.seqNumber, 1))
-			p.Header.SequenceNumber = seq
-
-			if _, ok := f.(*format.H265); ok {
-				p.Header.PayloadType = 98
-				_ = cam.trackH265.WriteRTP(&p)
-			} else if _, ok := f.(*format.H264); ok {
-				p.Header.PayloadType = 96
-				_ = cam.trackH264.WriteRTP(&p)
-			}
+			p.Header.PayloadType = targetPT
+			_ = targetTrack.WriteRTP(&p)
 		})
 
 		_, err = client.Play(nil)

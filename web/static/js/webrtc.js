@@ -256,27 +256,17 @@ class WHEPPlayer {
         this.updateStatus("ONLINE", "", "online");
       }
 
-      // Corta atraso acumulado no buffer (live-edge catchup) após micro-interferências de RF
-      if (this.video && !this.video.paused && this.video.buffered && this.video.buffered.length > 0) {
-        try {
-          const end = this.video.buffered.end(this.video.buffered.length - 1);
-          if (end - this.video.currentTime > 1.2) {
-            this.video.currentTime = end - 0.1;
-          }
-        } catch (e) {}
-      }
-
-      // Verifica se a conexão ficou congelada sem decodificar novos frames por mais de 6s
+      // Verifica se a conexão ficou congelada sem decodificar novos frames por mais de 8s
       if (
         this.pc &&
         this.pc.connectionState === "connected" &&
         this.connectedAt > 0 &&
-        Date.now() - this.connectedAt > 6000
+        Date.now() - this.connectedAt > 8000
       ) {
         const now = Date.now();
-        const noFramesYet = this.video.readyState < 2 && now - this.connectedAt > 6500;
-        const stalledByFrames = this.lastFrameProgressAt > 0 && now - this.lastFrameProgressAt > 6000;
-        const stalledByTime = this.lastFrameProgressAt === 0 && this.lastTimeUpdate > 0 && now - this.lastTimeUpdate > 7000;
+        const noFramesYet = this.video.readyState < 2 && now - this.connectedAt > 8500;
+        const stalledByFrames = this.lastFrameProgressAt > 0 && now - this.lastFrameProgressAt > 8000;
+        const stalledByTime = this.lastFrameProgressAt === 0 && this.lastTimeUpdate > 0 && now - this.lastTimeUpdate > 9000;
 
         if (noFramesYet || stalledByFrames || stalledByTime) {
           this.connectedAt = now;
@@ -312,19 +302,22 @@ class WHEPPlayer {
 
       this.pc.ontrack = (event) => {
         if (event.track && event.track.kind !== "video") {
+          try {
+            event.track.enabled = false;
+            event.track.stop();
+          } catch (e) {}
           return;
         }
 
-        // Minimiza o buffer de jitter no receptor WebRTC para menor latência e recuperação rápida pós-RF
-        if (event.receiver) {
-          try {
-            if ("playoutDelayHint" in event.receiver) {
-              event.receiver.playoutDelayHint = 0;
-            }
-            if ("jitterBufferTarget" in event.receiver) {
-              event.receiver.jitterBufferTarget = 0;
-            }
-          } catch (e) {}
+        // Remove qualquer faixa de áudio que eventualmente exista na stream
+        if (event.streams && event.streams[0]) {
+          event.streams[0].getAudioTracks().forEach((audioTrack) => {
+            try {
+              audioTrack.enabled = false;
+              audioTrack.stop();
+              event.streams[0].removeTrack(audioTrack);
+            } catch (e) {}
+          });
         }
 
         // Usa exclusivamente a track de vídeo (sem faixa de áudio) para nunca acionar bloqueio de autoplay em TVs
@@ -355,7 +348,10 @@ class WHEPPlayer {
         }
       };
 
-      const offer = await this.pc.createOffer();
+      const offer = await this.pc.createOffer({
+        offerToReceiveVideo: true,
+        offerToReceiveAudio: false,
+      });
       await this.pc.setLocalDescription(offer);
 
       const controller = new AbortController();
