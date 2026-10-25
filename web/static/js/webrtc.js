@@ -269,7 +269,37 @@ class WHEPPlayer {
       } catch (e) {
         this.canvasActive = false;
       }
+      return;
     }
+
+    // 3. Fallback universal para Firefox Kiosk (Gecko VideoFrameContainer -> Canvas 2D)
+    // No Firefox, mesmo se <video>.play() for bloqueado por falta de clique/foco X11,
+    // o VideoFrameContainer da MediaStream WebRTC continua recebendo os quadros ao vivo
+    this.canvasActive = true;
+    this.canvas.classList.add("active");
+    const drawFirefoxLoop = () => {
+      if (!this.canvasActive || !this.inboundTrack || this.inboundTrack.readyState === "ended") {
+        this.canvasActive = false;
+        return;
+      }
+      if (this.video && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+        const vw = this.video.videoWidth;
+        const vh = this.video.videoHeight;
+        if (this.canvas.width !== vw || this.canvas.height !== vh) {
+          this.canvas.width = vw;
+          this.canvas.height = vh;
+        }
+        try {
+          this.canvasCtx.drawImage(this.video, 0, 0, vw, vh);
+          this.canvasFrames++;
+          this.lastFrameProgressAt = Date.now();
+          this.lastTimeUpdate = Date.now();
+          this.updateStatus("ONLINE", "", "online");
+        } catch (e) {}
+      }
+      setTimeout(drawFirefoxLoop, 66); // ~15 FPS no fallback de canvas
+    };
+    drawFirefoxLoop();
   }
 
   stopCanvasFallback() {
@@ -316,12 +346,18 @@ class WHEPPlayer {
     if (!this.video) return 0;
     if (typeof this.video.getVideoPlaybackQuality === "function") {
       const q = this.video.getVideoPlaybackQuality();
-      if (q && typeof q.totalVideoFrames === "number") {
+      if (q && typeof q.totalVideoFrames === "number" && q.totalVideoFrames > 0) {
         return q.totalVideoFrames;
       }
     }
-    if (typeof this.video.webkitDecodedFrameCount === "number") {
+    if (typeof this.video.webkitDecodedFrameCount === "number" && this.video.webkitDecodedFrameCount > 0) {
       return this.video.webkitDecodedFrameCount;
+    }
+    if (typeof this.video.mozPresentedFrames === "number" && this.video.mozPresentedFrames > 0) {
+      return this.video.mozPresentedFrames;
+    }
+    if (typeof this.video.mozDecodedFrames === "number" && this.video.mozDecodedFrames > 0) {
+      return this.video.mozDecodedFrames;
     }
     return 0;
   }
@@ -379,7 +415,7 @@ class WHEPPlayer {
         try {
           const stats = await this.pc.getStats();
           stats.forEach((report) => {
-            if (report.type === "inbound-rtp" && report.kind === "video") {
+            if (report.type === "inbound-rtp" && (report.kind === "video" || report.mediaType === "video")) {
               if (typeof report.framesPerSecond === "number" && report.framesPerSecond > 0) {
                 rtcFps = Math.max(rtcFps, Math.round(report.framesPerSecond));
               }
@@ -574,13 +610,41 @@ class WHEPPlayer {
       });
       await this.pc.setLocalDescription(offer);
 
+      // Aguarda coleta de candidatos ICE locais (essencial para Firefox Kiosk enviar a=candidate no SDP Offer)
+      if (this.pc.iceGatheringState !== "complete") {
+        await new Promise((resolve) => {
+          const checkGathering = () => {
+            if (!this.pc || this.pc.iceGatheringState === "complete") {
+              cleanup();
+              resolve();
+            }
+          };
+          const gatherTimer = setTimeout(() => {
+            cleanup();
+            resolve();
+          }, 250);
+          const cleanup = () => {
+            clearTimeout(gatherTimer);
+            if (this.pc) {
+              this.pc.removeEventListener("icegatheringstatechange", checkGathering);
+            }
+          };
+          this.pc.addEventListener("icegatheringstatechange", checkGathering);
+        });
+      }
+
+      const finalOfferSDP =
+        this.pc && this.pc.localDescription && this.pc.localDescription.sdp
+          ? this.pc.localDescription.sdp
+          : offer.sdp;
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       const resp = await fetch(`/api/whep/${this.cameraId}`, {
         method: "POST",
         headers: { "Content-Type": "application/sdp" },
-        body: offer.sdp,
+        body: finalOfferSDP,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
