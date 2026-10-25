@@ -117,6 +117,7 @@ type cameraStream struct {
 	sessMu         sync.RWMutex
 	connected      atomic.Bool
 	isH265         atomic.Bool
+	viewerJoined   atomic.Bool
 	cancel         context.CancelFunc
 	packetCount    uint64
 	frameCount     uint64
@@ -462,11 +463,33 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 
 		var lastRTPTime uint32
 		var hasLastRTPTime bool
+		var lastParamTS uint32
+		var hasLastParamTS bool
+		var curKeyframeTS uint32
+		var collectingKeyframe bool
+		var curKeyframePayloads [][]byte
+		var lastKeyframePayloads [][]byte
 		var framesInWindow int64
 		var outSeq uint16
 		windowStart := time.Now()
 
-		// Repasse zero-copy de RTP de vídeo com injeção automática de VPS/SPS/PPS nos Keyframes
+		writeRTPPayload := func(payload []byte, ts uint32, ssrc uint32, marker bool) {
+			outSeq++
+			p := rtp.Packet{
+				Header: rtp.Header{
+					Version:        2,
+					PayloadType:    targetPT,
+					SequenceNumber: outSeq,
+					Timestamp:      ts,
+					SSRC:           ssrc,
+					Marker:         marker,
+				},
+				Payload: payload,
+			}
+			_ = targetTrack.WriteRTP(&p)
+		}
+
+		// Repasse zero-copy de RTP de vídeo com injeção automática de VPS/SPS/PPS e Keyframe Instantâneo
 		client.OnPacketRTP(selectedMedia, selectedFormat, func(pkt *rtp.Packet) {
 			if !cam.connected.Load() {
 				cam.connected.Store(true)
@@ -479,6 +502,11 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			}
 
 			if !hasLastRTPTime || pkt.Timestamp != lastRTPTime {
+				if collectingKeyframe && len(curKeyframePayloads) > 0 {
+					lastKeyframePayloads = curKeyframePayloads
+					curKeyframePayloads = nil
+					collectingKeyframe = false
+				}
 				hasLastRTPTime = true
 				lastRTPTime = pkt.Timestamp
 				atomic.AddUint64(&cam.frameCount, 1)
@@ -498,12 +526,18 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 				case 32: // VPS
 					_, sps, pps := formaH265.SafeParams()
 					formaH265.SafeSetParams(append([]byte(nil), pkt.Payload...), sps, pps)
+					lastParamTS = pkt.Timestamp
+					hasLastParamTS = true
 				case 33: // SPS
 					vps, _, pps := formaH265.SafeParams()
 					formaH265.SafeSetParams(vps, append([]byte(nil), pkt.Payload...), pps)
+					lastParamTS = pkt.Timestamp
+					hasLastParamTS = true
 				case 34: // PPS
 					vps, sps, _ := formaH265.SafeParams()
 					formaH265.SafeSetParams(vps, sps, append([]byte(nil), pkt.Payload...))
+					lastParamTS = pkt.Timestamp
+					hasLastParamTS = true
 				case 48: // Aggregation Packet (AP - RFC 7798)
 					off := 2
 					for off+2 <= len(pkt.Payload) {
@@ -520,12 +554,18 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 							case 32:
 								_, sps, pps := formaH265.SafeParams()
 								formaH265.SafeSetParams(append([]byte(nil), subNALU...), sps, pps)
+								lastParamTS = pkt.Timestamp
+								hasLastParamTS = true
 							case 33:
 								vps, _, pps := formaH265.SafeParams()
 								formaH265.SafeSetParams(vps, append([]byte(nil), subNALU...), pps)
+								lastParamTS = pkt.Timestamp
+								hasLastParamTS = true
 							case 34:
 								vps, sps, _ := formaH265.SafeParams()
 								formaH265.SafeSetParams(vps, sps, append([]byte(nil), subNALU...))
+								lastParamTS = pkt.Timestamp
+								hasLastParamTS = true
 							}
 						}
 					}
@@ -534,26 +574,41 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 				isKeyframeStart := (naluType >= 19 && naluType <= 21) ||
 					(naluType == 49 && len(pkt.Payload) >= 3 && (pkt.Payload[2]>>7) == 1 && ((pkt.Payload[2]&0x3F) >= 19 && (pkt.Payload[2]&0x3F) <= 21))
 
-				if isKeyframeStart {
+				// Quando um novo cliente WebRTC conecta, envia imediatamente o último Keyframe em cache
+				// para que o vídeo abra em < 50ms sem esperar o próximo ciclo de GOP (4-8s) da câmera
+				if cam.viewerJoined.CompareAndSwap(true, false) && !isKeyframeStart && len(lastKeyframePayloads) > 0 {
+					kfTS := pkt.Timestamp - 3600
 					vps, sps, pps := formaH265.SafeParams()
 					for _, paramNALU := range [][]byte{vps, sps, pps} {
 						if len(paramNALU) > 0 {
-							outSeq++
-							paramPkt := rtp.Packet{
-								Header: rtp.Header{
-									Version:        2,
-									PayloadType:    targetPT,
-									SequenceNumber: outSeq,
-									Timestamp:      pkt.Timestamp,
-									SSRC:           pkt.SSRC,
-									Marker:         false,
-								},
-								Payload: paramNALU,
-							}
-							_ = targetTrack.WriteRTP(&paramPkt)
+							writeRTPPayload(paramNALU, kfTS, pkt.SSRC, false)
 						}
 					}
+					for idx, kfPay := range lastKeyframePayloads {
+						isLast := (idx == len(lastKeyframePayloads)-1)
+						writeRTPPayload(kfPay, kfTS, pkt.SSRC, isLast)
+					}
 				}
+
+				if isKeyframeStart {
+					collectingKeyframe = true
+					curKeyframeTS = pkt.Timestamp
+					curKeyframePayloads = curKeyframePayloads[:0]
+
+					// Só injeta VPS/SPS/PPS se a câmera ainda não os enviou neste mesmo Access Unit
+					if !hasLastParamTS || lastParamTS != pkt.Timestamp {
+						vps, sps, pps := formaH265.SafeParams()
+						for _, paramNALU := range [][]byte{vps, sps, pps} {
+							if len(paramNALU) > 0 {
+								writeRTPPayload(paramNALU, pkt.Timestamp, pkt.SSRC, false)
+							}
+						}
+						lastParamTS = pkt.Timestamp
+						hasLastParamTS = true
+					}
+				}
+
+				isKeyframeNALU := collectingKeyframe && pkt.Timestamp == curKeyframeTS
 
 				// Re-fragmenta pacotes RTP H.265 maiores que 1200 bytes (vindos do RTSP/TCP)
 				// para nunca exceder o MTU UDP/SRTP do WebRTC na rede Wi-Fi
@@ -590,19 +645,15 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 							chunkPayload[2] = (sBit << 7) | (eBit << 6) | fuType
 							copy(chunkPayload[3:], data[off:endOff])
 
-							outSeq++
-							fragPkt := rtp.Packet{
-								Header: rtp.Header{
-									Version:        2,
-									PayloadType:    targetPT,
-									SequenceNumber: outSeq,
-									Timestamp:      pkt.Timestamp,
-									SSRC:           pkt.SSRC,
-									Marker:         isLastChunk && pkt.Marker,
-								},
-								Payload: chunkPayload,
+							if isKeyframeNALU && len(curKeyframePayloads) < 64 {
+								curKeyframePayloads = append(curKeyframePayloads, chunkPayload)
 							}
-							_ = targetTrack.WriteRTP(&fragPkt)
+							writeRTPPayload(chunkPayload, pkt.Timestamp, pkt.SSRC, isLastChunk && pkt.Marker)
+						}
+						if isKeyframeNALU && pkt.Marker && len(curKeyframePayloads) > 0 {
+							lastKeyframePayloads = curKeyframePayloads
+							curKeyframePayloads = nil
+							collectingKeyframe = false
 						}
 						return
 					} else if naluType >= 1 && naluType <= 47 {
@@ -633,30 +684,31 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 							chunkPayload[2] = (sBit << 7) | (eBit << 6) | naluType
 							copy(chunkPayload[3:], data[off:endOff])
 
-							outSeq++
-							fragPkt := rtp.Packet{
-								Header: rtp.Header{
-									Version:        2,
-									PayloadType:    targetPT,
-									SequenceNumber: outSeq,
-									Timestamp:      pkt.Timestamp,
-									SSRC:           pkt.SSRC,
-									Marker:         isLastChunk && pkt.Marker,
-								},
-								Payload: chunkPayload,
+							if isKeyframeNALU && len(curKeyframePayloads) < 64 {
+								curKeyframePayloads = append(curKeyframePayloads, chunkPayload)
 							}
-							_ = targetTrack.WriteRTP(&fragPkt)
+							writeRTPPayload(chunkPayload, pkt.Timestamp, pkt.SSRC, isLastChunk && pkt.Marker)
+						}
+						if isKeyframeNALU && pkt.Marker && len(curKeyframePayloads) > 0 {
+							lastKeyframePayloads = curKeyframePayloads
+							curKeyframePayloads = nil
+							collectingKeyframe = false
 						}
 						return
 					}
 				}
+
+				if isKeyframeNALU && len(curKeyframePayloads) < 64 {
+					curKeyframePayloads = append(curKeyframePayloads, append([]byte(nil), pkt.Payload...))
+					if pkt.Marker && len(curKeyframePayloads) > 0 {
+						lastKeyframePayloads = curKeyframePayloads
+						curKeyframePayloads = nil
+						collectingKeyframe = false
+					}
+				}
 			}
 
-			outSeq++
-			p := *pkt
-			p.Header.PayloadType = targetPT
-			p.Header.SequenceNumber = outSeq
-			_ = targetTrack.WriteRTP(&p)
+			writeRTPPayload(pkt.Payload, pkt.Timestamp, pkt.SSRC, pkt.Marker)
 		})
 
 		_, err = client.Play(nil)

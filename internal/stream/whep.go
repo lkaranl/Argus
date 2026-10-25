@@ -127,9 +127,11 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 
 		sessionID := generateSessionID()
 
-		// Registra callback de mudança de estado para liberar recursos em caso de desconexão
+		// Registra callback de mudança de estado para envio imediato de Keyframe e limpeza na desconexão
 		pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-			if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+			if state == webrtc.PeerConnectionStateConnected {
+				cam.viewerJoined.Store(true)
+			} else if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 				cam.sessMu.Lock()
 				delete(cam.sessions, sessionID)
 				cam.sessMu.Unlock()
