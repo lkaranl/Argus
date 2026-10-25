@@ -97,6 +97,7 @@ class AppleModularClock {
     this.ticksGroup.innerHTML = "";
     const totalLen = guide.getTotalLength();
     this.tickElements = [];
+    this.lastSecond = -1;
 
     const rx = 22;
     const topStraightWidth = this.width - 28 - (2 * rx);
@@ -137,44 +138,68 @@ class AppleModularClock {
   }
 
   start() {
+    this.lastHour = -1;
+    this.lastMinute = -1;
+    this.lastSecond = -1;
+
     const update = () => {
       const now = new Date();
       const h = now.getHours();
       const m = now.getMinutes();
       const s = now.getSeconds();
 
-      if (this.elHours) this.elHours.textContent = String(h).padStart(2, "0");
-      if (this.elMinutes) this.elMinutes.textContent = String(m).padStart(2, "0");
+      if (s === this.lastSecond) return;
+
       if (this.elSecPill) this.elSecPill.textContent = String(s).padStart(2, "0");
 
-      if (this.elDate) {
-        const diaSem = this.diasSemana[now.getDay()];
-        const diaNum = now.getDate();
-        const mesStr = this.meses[now.getMonth()];
-        this.elDate.textContent = `${diaSem}, ${diaNum} ${mesStr}`;
+      if (m !== this.lastMinute) {
+        this.lastMinute = m;
+        if (this.elMinutes) this.elMinutes.textContent = String(m).padStart(2, "0");
       }
 
-      if (this.elGreeting) {
-        if (h >= 5 && h < 12) this.elGreeting.textContent = "MANHÃ";
-        else if (h >= 12 && h < 18) this.elGreeting.textContent = "TARDE";
-        else this.elGreeting.textContent = "NOITE";
-      }
+      if (h !== this.lastHour) {
+        this.lastHour = h;
+        if (this.elHours) this.elHours.textContent = String(h).padStart(2, "0");
 
-      for (let i = 0; i < 60; i++) {
-        const tick = this.tickElements[i];
-        if (!tick) continue;
+        if (this.elDate) {
+          const diaSem = this.diasSemana[now.getDay()];
+          const diaNum = now.getDate();
+          const mesStr = this.meses[now.getMonth()];
+          this.elDate.textContent = `${diaSem}, ${diaNum} ${mesStr}`;
+        }
 
-        if (i <= s) {
-          tick.classList.add("active");
-          if (i === s) {
-            tick.classList.add("head");
-          } else {
-            tick.classList.remove("head");
-          }
-        } else {
-          tick.classList.remove("active", "head");
+        if (this.elGreeting) {
+          if (h >= 5 && h < 12) this.elGreeting.textContent = "MANHÃ";
+          else if (h >= 12 && h < 18) this.elGreeting.textContent = "TARDE";
+          else this.elGreeting.textContent = "NOITE";
         }
       }
+
+      // Atualização cirúrgica de DOM: altera apenas o segundo anterior e o atual (2 nós em vez de 60)
+      if (this.lastSecond >= 0 && s === this.lastSecond + 1) {
+        const prevTick = this.tickElements[this.lastSecond];
+        const currTick = this.tickElements[s];
+        if (prevTick) prevTick.classList.remove("head");
+        if (currTick) currTick.classList.add("active", "head");
+      } else {
+        for (let i = 0; i < 60; i++) {
+          const tick = this.tickElements[i];
+          if (!tick) continue;
+
+          if (i <= s) {
+            tick.classList.add("active");
+            if (i === s) {
+              tick.classList.add("head");
+            } else {
+              tick.classList.remove("head");
+            }
+          } else {
+            tick.classList.remove("active", "head");
+          }
+        }
+      }
+
+      this.lastSecond = s;
     };
 
     update();

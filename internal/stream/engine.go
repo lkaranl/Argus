@@ -19,20 +19,51 @@ import (
 )
 
 type cameraStream struct {
-	id          string
-	name        string
-	rtspURL     string
-	trackH264   *webrtc.TrackLocalStaticRTP
-	trackH265   *webrtc.TrackLocalStaticRTP
-	sessions    map[string]*webrtc.PeerConnection
-	sessMu      sync.RWMutex
-	connected   bool
-	cancel      context.CancelFunc
-	packetCount uint64
-	lastPacket  time.Time
-	lastError   string
-	codecInfo   string
-	isH265      bool
+	id             string
+	name           string
+	rtspURL        string
+	trackH264      *webrtc.TrackLocalStaticRTP
+	trackH265      *webrtc.TrackLocalStaticRTP
+	sessions       map[string]*webrtc.PeerConnection
+	sessMu         sync.RWMutex
+	connected      atomic.Bool
+	isH265         atomic.Bool
+	cancel         context.CancelFunc
+	packetCount    uint64
+	lastPacketNano atomic.Int64
+	seqNumber      uint32
+	stateMu        sync.RWMutex
+	lastError      string
+	codecInfo      string
+}
+
+func (cs *cameraStream) setError(errStr string) {
+	cs.stateMu.Lock()
+	cs.lastError = errStr
+	cs.stateMu.Unlock()
+}
+
+func (cs *cameraStream) setCodecInfo(info string) {
+	cs.stateMu.Lock()
+	cs.codecInfo = info
+	cs.stateMu.Unlock()
+}
+
+func (cs *cameraStream) getState() (lastErr string, codec string) {
+	cs.stateMu.RLock()
+	lastErr = cs.lastError
+	codec = cs.codecInfo
+	cs.stateMu.RUnlock()
+	return
+}
+
+func (cs *cameraStream) closeAllSessions() {
+	cs.sessMu.Lock()
+	for id, pc := range cs.sessions {
+		_ = pc.Close()
+		delete(cs.sessions, id)
+	}
+	cs.sessMu.Unlock()
 }
 
 // Engine orquestra os streams de vídeo e as sessões WebRTC WHEP
@@ -162,15 +193,22 @@ func (e *Engine) ListCameras() []map[string]interface{} {
 		cam.sessMu.RUnlock()
 
 		pktCount := atomic.LoadUint64(&cam.packetCount)
+		lastNano := cam.lastPacketNano.Load()
+		var lastPacketStr string
+		if lastNano > 0 {
+			lastPacketStr = time.Unix(0, lastNano).Format(time.RFC3339)
+		}
+		lastErr, codec := cam.getState()
+
 		result = append(result, map[string]interface{}{
 			"id":               cam.id,
 			"name":             cam.name,
-			"connected":        cam.connected,
+			"connected":        cam.connected.Load(),
 			"viewers":          sessCount,
 			"packets_received": pktCount,
-			"last_packet":      cam.lastPacket.Format(time.RFC3339),
-			"last_error":       cam.lastError,
-			"codec":            cam.codecInfo,
+			"last_packet":      lastPacketStr,
+			"last_error":       lastErr,
+			"codec":            codec,
 			"url":              maskURL(cam.rtspURL),
 		})
 	}
@@ -217,32 +255,35 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 
 		u, err := base.ParseURL(rawURL)
 		if err != nil {
-			cam.lastError = fmt.Sprintf("URL inválida: %v", err)
+			cam.setError(fmt.Sprintf("URL inválida: %v", err))
 			log.Printf("[RTSP] URL inválida para %s (%s): %v", cam.id, cam.name, err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		// Utiliza RTSP over TCP para máxima estabilidade e evitar perdas de pacotes UDP na rede
+		// Utiliza RTSP over TCP com timeouts curtos (4s) para detectar rapidamente
+		// congelamentos por interferência de RF em 2.4GHz e reconectar imediatamente quando o sinal voltar
 		transport := gortsplib.TransportTCP
 		client := &gortsplib.Client{
-			Transport: &transport,
+			Transport:    &transport,
+			ReadTimeout:  4 * time.Second,
+			WriteTimeout: 4 * time.Second,
 		}
 
 		err = client.Start(u.Scheme, u.Host)
 		if err != nil {
-			cam.lastError = fmt.Sprintf("Erro ao conectar no host %s: %v", u.Host, err)
+			cam.setError(fmt.Sprintf("Erro ao conectar no host %s: %v", u.Host, err))
 			log.Printf("[RTSP] Erro ao conectar em %s (%s - %s): %v", cam.id, cam.name, u.Host, err)
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
 		desc, _, err := client.Describe(u)
 		if err != nil {
-			cam.lastError = fmt.Sprintf("Falha no DESCRIBE (credenciais/autenticação): %v", err)
+			cam.setError(fmt.Sprintf("Falha no DESCRIBE (credenciais/autenticação): %v", err))
 			log.Printf("[RTSP] Falha no DESCRIBE de %s: %v", cam.id, err)
 			client.Close()
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
@@ -252,50 +293,56 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 		mediH264 := desc.FindFormat(&formaH264)
 		mediH265 := desc.FindFormat(&formaH265)
 
-		wasH265 := cam.isH265
+		wasH265 := cam.isH265.Load()
+		var codecName string
 		if mediH265 != nil {
-			cam.isH265 = true
-			cam.codecInfo = fmt.Sprintf("H.265 (PT %d)", formaH265.PayloadType())
+			cam.isH265.Store(true)
+			codecName = fmt.Sprintf("H.265 (PT %d)", formaH265.PayloadType())
+			cam.setCodecInfo(codecName)
 			log.Printf("[RTSP] ✓ Codec H.265 (HEVC) detectado para %s (%s)", cam.id, cam.name)
 		} else if mediH264 != nil {
-			cam.isH265 = false
-			cam.codecInfo = fmt.Sprintf("H.264 (PT %d)", formaH264.PayloadType())
+			cam.isH265.Store(false)
+			codecName = fmt.Sprintf("H.264 (PT %d)", formaH264.PayloadType())
+			cam.setCodecInfo(codecName)
 			log.Printf("[RTSP] ✓ Codec H.264 detectado para %s (%s)", cam.id, cam.name)
 		} else {
-			cam.lastError = "Nenhum codec de vídeo H.264 ou H.265 encontrado no SDP da câmera"
+			cam.setError("Nenhum codec de vídeo H.264 ou H.265 encontrado no SDP da câmera")
 			log.Printf("[RTSP] ❌ Nenhum formato H.264/H.265 para %s", cam.id)
 			client.Close()
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		// Se o codec detectado mudou (ex: cliente conectou antes do DESCRIBE em câmera H.265),
-		// encerra sessões antigas para forçar renegociação imediata na track correta
-		if wasH265 != cam.isH265 {
-			cam.sessMu.Lock()
-			for id, pc := range cam.sessions {
-				_ = pc.Close()
-				delete(cam.sessions, id)
-			}
-			cam.sessMu.Unlock()
+		// Se o codec detectado mudou ou a câmera reconectou após queda de RF,
+		// encerra sessões WebRTC antigas para forçar renegociação limpa na TV
+		if wasH265 != cam.isH265.Load() {
+			cam.closeAllSessions()
 		}
 
 		err = client.SetupAll(desc.BaseURL, desc.Medias)
 		if err != nil {
-			cam.lastError = fmt.Sprintf("Falha no SETUP: %v", err)
+			cam.setError(fmt.Sprintf("Falha no SETUP: %v", err))
 			log.Printf("[RTSP] Falha no SETUP de %s: %v", cam.id, err)
 			client.Close()
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		// Repasse direto zero-copy de RTP para o WebRTC Pion
+		// Repasse direto zero-copy e lock-free de RTP para o WebRTC Pion
+		// Reescreve SequenceNumber de forma monotônica para evitar congelamento do SRTP/Jitter Buffer após micro-cortes de RF
 		client.OnPacketRTPAny(func(m *description.Media, f format.Format, pkt *rtp.Packet) {
-			cam.connected = true
-			atomic.AddUint64(&cam.packetCount, 1)
-			cam.lastPacket = time.Now()
-			cam.lastError = ""
+			if !cam.connected.Load() {
+				cam.connected.Store(true)
+				cam.setError("")
+			}
+			cnt := atomic.AddUint64(&cam.packetCount, 1)
+			if cnt == 1 || cnt%30 == 0 {
+				cam.lastPacketNano.Store(time.Now().UnixNano())
+			}
+
 			p := *pkt
+			seq := uint16(atomic.AddUint32(&cam.seqNumber, 1))
+			p.Header.SequenceNumber = seq
 
 			if _, ok := f.(*format.H265); ok {
 				p.Header.PayloadType = 98
@@ -308,14 +355,14 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 
 		_, err = client.Play(nil)
 		if err != nil {
-			cam.lastError = fmt.Sprintf("Falha no PLAY: %v", err)
+			cam.setError(fmt.Sprintf("Falha no PLAY: %v", err))
 			log.Printf("[RTSP] Falha no PLAY de %s: %v", cam.id, err)
 			client.Close()
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		log.Printf("[RTSP] ✓ Stream conectado e ativo: %s (%s) [%s]", cam.id, cam.name, cam.codecInfo)
+		log.Printf("[RTSP] ✓ Stream conectado e ativo: %s (%s) [%s]", cam.id, cam.name, codecName)
 
 		// Aguarda enquanto a conexão estiver ativa ou contexto encerrado
 		waitErr := make(chan error, 1)
@@ -328,11 +375,15 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			client.Close()
 			return
 		case err := <-waitErr:
-			log.Printf("[RTSP] Conexão com %s interrompida: %v. Reconectando em 2s...", cam.id, err)
+			cam.setError(fmt.Sprintf("Sinal interrompido: %v", err))
+			log.Printf("[RTSP] Conexão com %s interrompida (possível interferência RF/Wi-Fi): %v. Reconectando em 1.5s...", cam.id, err)
 		}
 
-		cam.connected = false
+		cam.connected.Store(false)
 		client.Close()
-		time.Sleep(2 * time.Second)
+		// Encerra sessões WebRTC ativas desta câmera para que a TV saiba imediatamente
+		// que o sinal caiu e renegocie uma sessão limpa assim que o RTSP voltar
+		cam.closeAllSessions()
+		time.Sleep(1500 * time.Millisecond)
 	}
 }

@@ -114,6 +114,20 @@ func (m *Manager) Start(ctx context.Context) {
 			m.refreshWeather(ctx)
 			m.broadcast()
 		case <-uptimeTicker.C:
+			// Auto-recuperação rápida pós-queda de internet: se Solar ou Clima estiverem em modo fallback/offline,
+			// tenta reconectar a cada 30s em vez de aguardar o ciclo longo de 5m/30m
+			m.mu.RLock()
+			solarNeedsRetry := m.cfg.Solar.Enabled && (m.latest.Solar == nil || !m.latest.Solar.Available || m.latest.Solar.IsFallback)
+			weatherNeedsRetry := m.cfg.Weather.Enabled && (m.latest.Weather == nil || !m.latest.Weather.Available || m.latest.Weather.IsStale)
+			m.mu.RUnlock()
+
+			if solarNeedsRetry {
+				m.refreshSolar(ctx)
+			}
+			if weatherNeedsRetry {
+				m.refreshWeather(ctx)
+			}
+
 			m.updateServerStatus()
 			m.broadcast()
 		}

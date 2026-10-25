@@ -12,6 +12,13 @@ class ArgusTelemetryConsumer {
 
     this.renderSkeleton();
     this.connect();
+
+    // Reconecta o stream SSE imediatamente quando a TV recuperar sinal Wi-Fi após interferência de RF
+    window.addEventListener("online", () => {
+      if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
+        this.connect();
+      }
+    });
   }
 
   renderSkeleton() {
@@ -131,6 +138,16 @@ class ArgusTelemetryConsumer {
 
     // 2. Atualização dos Dados Fotovoltaicos
     const solar = data.solar;
+    const weather = data.weather;
+
+    if (this.elBeaconText) {
+      if ((solar && solar.is_fallback) || (weather && weather.is_stale)) {
+        this.elBeaconText.textContent = "CACHE LOCAL";
+      } else {
+        this.elBeaconText.textContent = "AO VIVO";
+      }
+    }
+
     if (solar && solar.available) {
       const station = (solar.station_name || "USINA SOLAR").toUpperCase();
       if (this.elStationName) this.elStationName.textContent = station;
@@ -147,7 +164,6 @@ class ArgusTelemetryConsumer {
     }
 
     // 3. Atualização Climática e Subtítulo
-    const weather = data.weather;
     if (weather) {
       const city = weather.city || (solar && solar.endereco) || "Brasil";
       const temp = weather.current_temp !== undefined ? `${weather.current_temp}°C` : "";

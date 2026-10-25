@@ -16,12 +16,14 @@ class WHEPPlayer {
     this.reconnectTimer = null;
     this.playRetryTimer = null;
     this.watchdogTimer = null;
-    this.reconnectDelay = 2000;
-    this.maxReconnectDelay = 15000;
+    this.reconnectDelay = 1200;
+    this.maxReconnectDelay = 3500;
     this.isConnecting = false;
     this.connectedAt = 0;
     this.lastTimeUpdate = 0;
     this.lastCurrentTime = -1;
+    this.lastDecodedFrames = -1;
+    this.lastFrameProgressAt = 0;
 
     this.configureVideoElement();
     this.startWatchdog();
@@ -133,8 +135,26 @@ class WHEPPlayer {
   }
 
   /**
-   * Watchdog contínuo: garante que o vídeo nunca fique pausado na TV
-   * e reconecta automaticamente se a sessão WebRTC ficar sem receber quadros.
+   * Retorna o total de quadros efetivamente decodificados pelo hardware da TV.
+   */
+  getDecodedFrameCount() {
+    if (!this.video) return 0;
+    if (typeof this.video.getVideoPlaybackQuality === "function") {
+      const q = this.video.getVideoPlaybackQuality();
+      if (q && typeof q.totalVideoFrames === "number") {
+        return q.totalVideoFrames;
+      }
+    }
+    if (typeof this.video.webkitDecodedFrameCount === "number") {
+      return this.video.webkitDecodedFrameCount;
+    }
+    return 0;
+  }
+
+  /**
+   * Watchdog contínuo: garante que o vídeo nunca fique pausado na TV,
+   * mantém a reprodução colada no tempo real (live-edge) após oscilações de RF 2.4GHz
+   * e reconecta rapidamente se o decodificador parar de receber quadros por > 6s.
    */
   startWatchdog() {
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);
@@ -143,18 +163,41 @@ class WHEPPlayer {
         this.tryPlay();
       }
 
-      // Verifica se a conexão ficou congelada sem decodificar frames por mais de 12s
+      // Monitora avanço real de quadros decodificados na GPU da TV
+      const decoded = this.getDecodedFrameCount();
+      if (decoded > 0 && decoded !== this.lastDecodedFrames) {
+        this.lastDecodedFrames = decoded;
+        this.lastFrameProgressAt = Date.now();
+        this.lastTimeUpdate = Date.now();
+        this.updateStatus("ONLINE", "", "online");
+      }
+
+      // Corta atraso acumulado no buffer (live-edge catchup) após micro-interferências de RF
+      if (this.video && !this.video.paused && this.video.buffered && this.video.buffered.length > 0) {
+        try {
+          const end = this.video.buffered.end(this.video.buffered.length - 1);
+          if (end - this.video.currentTime > 1.2) {
+            this.video.currentTime = end - 0.1;
+          }
+        } catch (e) {}
+      }
+
+      // Verifica se a conexão ficou congelada sem decodificar novos frames por mais de 6s
       if (
         this.pc &&
         this.pc.connectionState === "connected" &&
         this.connectedAt > 0 &&
-        Date.now() - this.connectedAt > 12000
+        Date.now() - this.connectedAt > 6000
       ) {
-        const noFramesYet = this.video.readyState < 2 || this.lastTimeUpdate === 0;
-        const stalledFrames = this.lastTimeUpdate > 0 && Date.now() - this.lastTimeUpdate > 15000;
-        if (noFramesYet || stalledFrames) {
-          this.connectedAt = Date.now();
-          this.lastTimeUpdate = Date.now();
+        const now = Date.now();
+        const noFramesYet = this.video.readyState < 2 && now - this.connectedAt > 6500;
+        const stalledByFrames = this.lastFrameProgressAt > 0 && now - this.lastFrameProgressAt > 6000;
+        const stalledByTime = this.lastFrameProgressAt === 0 && this.lastTimeUpdate > 0 && now - this.lastTimeUpdate > 7000;
+
+        if (noFramesYet || stalledByFrames || stalledByTime) {
+          this.connectedAt = now;
+          this.lastFrameProgressAt = now;
+          this.lastTimeUpdate = now;
           this.connect();
         }
       }
@@ -165,6 +208,8 @@ class WHEPPlayer {
     if (this.isConnecting) return;
     this.isConnecting = true;
     this.stopPlayRetryLoop();
+    this.lastDecodedFrames = -1;
+    this.lastFrameProgressAt = 0;
 
     this.updateStatus("CONECTANDO", "Negociando WHEP...", "connecting");
 
@@ -174,8 +219,9 @@ class WHEPPlayer {
     }
 
     try {
+      // Operação 100% LAN-First (iceServers vazio): funciona instantaneamente mesmo com a Internet (WAN) desconectada
       this.pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        iceServers: []
       });
 
       this.pc.addTransceiver("video", { direction: "recvonly" });
@@ -183,6 +229,18 @@ class WHEPPlayer {
       this.pc.ontrack = (event) => {
         if (event.track && event.track.kind !== "video") {
           return;
+        }
+
+        // Minimiza o buffer de jitter no receptor WebRTC para menor latência e recuperação rápida pós-RF
+        if (event.receiver) {
+          try {
+            if ("playoutDelayHint" in event.receiver) {
+              event.receiver.playoutDelayHint = 0;
+            }
+            if ("jitterBufferTarget" in event.receiver) {
+              event.receiver.jitterBufferTarget = 0;
+            }
+          } catch (e) {}
         }
 
         // Usa exclusivamente a track de vídeo (sem faixa de áudio) para nunca acionar bloqueio de autoplay em TVs
@@ -203,8 +261,9 @@ class WHEPPlayer {
         if (!this.pc) return;
         const state = this.pc.connectionState;
         if (state === "connected") {
-          this.reconnectDelay = 2000;
+          this.reconnectDelay = 1200;
           this.connectedAt = Date.now();
+          this.lastFrameProgressAt = Date.now();
           this.tryPlay();
         } else if (state === "disconnected" || state === "failed" || state === "closed") {
           this.updateStatus("RECONECTANDO", "Sinal interrompido...", "offline");
@@ -215,11 +274,16 @@ class WHEPPlayer {
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
       const resp = await fetch(`/api/whep/${this.cameraId}`, {
         method: "POST",
         headers: { "Content-Type": "application/sdp" },
         body: offer.sdp,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!resp.ok) {
         throw new Error(`Servidor WHEP retornou status HTTP ${resp.status}`);
@@ -235,7 +299,7 @@ class WHEPPlayer {
       this.tryPlay();
     } catch (err) {
       this.isConnecting = false;
-      this.updateStatus("SEM SINAL", "Tentando reconectar...", "offline");
+      this.updateStatus("SEM SINAL", "Reconectando...", "offline");
       this.scheduleReconnect();
     }
   }
@@ -261,11 +325,14 @@ class WHEPPlayer {
 
   scheduleReconnect() {
     if (this.reconnectTimer) return;
+    // Adiciona jitter aleatório (0 a 500ms) para evitar que as 3 câmeras saturem o Wi-Fi 2.4GHz no mesmo instante
+    const jitter = Math.floor(Math.random() * 500);
+    const delay = this.reconnectDelay + jitter;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
+      this.reconnectDelay = Math.min(Math.round(this.reconnectDelay * 1.35), this.maxReconnectDelay);
       this.connect();
-    }, this.reconnectDelay);
+    }, delay);
   }
 }
 
@@ -297,13 +364,40 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) resumeAllCameras();
+    if (!document.hidden) {
+      resumeAllCameras();
+      requestTVWakeLock();
+    }
   });
   window.addEventListener("focus", resumeAllCameras);
   window.addEventListener("pageshow", resumeAllCameras);
   document.addEventListener("keydown", resumeAllCameras);
   document.addEventListener("click", resumeAllCameras);
   document.addEventListener("touchstart", resumeAllCameras, { passive: true });
+
+  // Reconexão imediata quando a interface Wi-Fi da TV recuperar sinal após queda ou interferência de RF
+  window.addEventListener("online", () => {
+    if (!window.argusPlayers) return;
+    Object.values(window.argusPlayers).forEach((player) => {
+      player.reconnectDelay = 800;
+      if (!player.pc || player.pc.connectionState !== "connected" || player.video.readyState < 2) {
+        player.connect();
+      } else {
+        player.tryPlay();
+      }
+    });
+  });
+
+  // Mantém a tela da Smart TV sempre ativa (Screen Wake Lock API)
+  let wakeLockSentinel = null;
+  const requestTVWakeLock = async () => {
+    if ("wakeLock" in navigator && !document.hidden) {
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request("screen");
+      } catch (e) {}
+    }
+  };
+  requestTVWakeLock();
 
   // Controle de Tela Cheia (F11, duplo clique ou botão dedicado)
   const btnFullscreen = document.getElementById("btn-fullscreen");

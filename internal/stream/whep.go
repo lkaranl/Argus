@@ -81,7 +81,7 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 		}
 
 		// Se o stream nativo ainda não estiver conectado, tenta negociar com go2rtc se estiver ativo
-		if !cam.connected {
+		if !cam.connected.Load() {
 			if ans, ok := tryGo2RTC(cameraID, body); ok {
 				w.Header().Set("Content-Type", "application/sdp")
 				w.WriteHeader(http.StatusCreated)
@@ -103,7 +103,7 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 
 		// Escolhe a track correspondente ao codec ativo da câmera (H.265 ou H.264)
 		trackToSend := cam.trackH264
-		if cam.isH265 {
+		if cam.isH265.Load() {
 			trackToSend = cam.trackH265
 		}
 

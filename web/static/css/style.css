@@ -185,7 +185,12 @@ body.fullscreen-active {
 
 .video-overlay.hidden {
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
+}
+
+.video-overlay.hidden .spinner {
+  animation: none !important;
 }
 
 .spinner {
@@ -369,7 +374,7 @@ body.fullscreen-active {
   margin: 0 3px;
   transform: translateY(-6px);
   text-shadow: 0 0 18px rgba(0, 230, 118, 0.5);
-  animation: pulseColon 1s infinite alternate;
+  animation: pulseColon 1s steps(2, start) infinite;
 }
 
 @keyframes pulseColon {
