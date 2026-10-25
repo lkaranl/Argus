@@ -14,6 +14,7 @@ import (
 	"github.com/bluenviron/gortsplib/v4/pkg/base"
 	"github.com/bluenviron/gortsplib/v4/pkg/description"
 	"github.com/bluenviron/gortsplib/v4/pkg/format"
+	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
@@ -108,7 +109,16 @@ func NewEngine(cameras []config.CameraConfig) *Engine {
 		PayloadType: 98,
 	}, webrtc.RTPCodecTypeVideo)
 
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
+	// Ativa interceptadores padrão WebRTC (NACK Responder para retransmissão seletiva de pacotes perdidos, RTCP Reports e TWCC)
+	ir := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(m, ir); err != nil {
+		log.Printf("[Stream] Aviso ao registrar interceptadores WebRTC: %v", err)
+	}
+
+	api := webrtc.NewAPI(
+		webrtc.WithMediaEngine(m),
+		webrtc.WithInterceptorRegistry(ir),
+	)
 
 	engine := &Engine{
 		cameras:     make(map[string]*cameraStream),
