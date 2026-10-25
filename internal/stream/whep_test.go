@@ -2,14 +2,66 @@ package stream
 
 import (
 	"bytes"
+	"encoding/binary"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"argus/internal/config"
+	"github.com/bluenviron/gortsplib/v4/pkg/base"
 	"github.com/pion/webrtc/v4"
 )
+
+func TestRTSPNormalizerConn(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+
+	norm := newRTSPNormalizerConn(c1)
+
+	go func() {
+		// Envia dois frames RTSP Interleaved no canal 0 com SSRC diferentes (1 e 2) e SequenceNumber fora de ordem
+		for i, ssrc := range []uint32{1, 2} {
+			rtpPkt := make([]byte, 14)
+			rtpPkt[0] = 0x80
+			rtpPkt[1] = 98
+			binary.BigEndian.PutUint16(rtpPkt[2:4], uint16(500+i*10))
+			binary.BigEndian.PutUint32(rtpPkt[4:8], 90000)
+			binary.BigEndian.PutUint32(rtpPkt[8:12], ssrc)
+			rtpPkt[12] = 0x40
+			rtpPkt[13] = 0x01
+
+			fr := base.InterleavedFrame{
+				Channel: 0,
+				Payload: rtpPkt,
+			}
+			buf := make([]byte, 4+len(rtpPkt))
+			_, _ = fr.MarshalTo(buf)
+			_, _ = c2.Write(buf)
+		}
+	}()
+
+	buf := make([]byte, 64)
+	for expectedSeq := uint16(1); expectedSeq <= 2; expectedSeq++ {
+		n, err := norm.Read(buf)
+		if err != nil {
+			t.Fatalf("Erro ao ler frame normalizado %d: %v", expectedSeq, err)
+		}
+		if n < 16 {
+			t.Fatalf("Frame curto demais: %d bytes", n)
+		}
+		gotSeq := binary.BigEndian.Uint16(buf[6:8])
+		gotSSRC := binary.BigEndian.Uint32(buf[12:16])
+		if gotSeq != expectedSeq {
+			t.Errorf("SequenceNumber esperado %d, obteve %d", expectedSeq, gotSeq)
+		}
+		if gotSSRC != 1 {
+			t.Errorf("SSRC esperado 1, obteve %d", gotSSRC)
+		}
+	}
+}
 
 func TestWHEPHandler(t *testing.T) {
 	cameras := []config.CameraConfig{

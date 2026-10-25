@@ -283,6 +283,7 @@ func TestDiagnostic_LiveStreamingIngest(t *testing.T) {
 		t.Logf("     - Conectado: %v", c["connected"])
 		t.Logf("     - Codec: %v", c["codec"])
 		t.Logf("     - Pacotes RTP Recebidos: %v", c["packets_received"])
+		t.Logf("     - Quadros (Frames) Recebidos: %v (FPS Ingestão: %v)", c["frames_received"], c["ingest_fps"])
 		t.Logf("     - Último Erro: %v", c["last_error"])
 	}
 }

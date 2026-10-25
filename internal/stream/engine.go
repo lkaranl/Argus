@@ -1,9 +1,12 @@
 package stream
 
 import (
+	"bufio"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +22,91 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// rtspNormalizerConn intercepta frames RTSP Interleaved ($ channel len payload) na conexão TCP
+// e normaliza o SSRC e SequenceNumber dos pacotes RTP de vídeo (canal 0), evitando o bug de firmware
+// das câmeras que trocam o SSRC de 1 para 2 ("received packet with wrong SSRC 2, expected 1").
+type rtspNormalizerConn struct {
+	net.Conn
+	br     *bufio.Reader
+	outBuf []byte
+	seq    uint16
+}
+
+func newRTSPNormalizerConn(c net.Conn) net.Conn {
+	if tc, ok := c.(*net.TCPConn); ok {
+		_ = tc.SetNoDelay(true)
+		_ = tc.SetReadBuffer(512 * 1024)
+	}
+	return &rtspNormalizerConn{
+		Conn: c,
+		br:   bufio.NewReaderSize(c, 64*1024),
+	}
+}
+
+func (nc *rtspNormalizerConn) Read(p []byte) (int, error) {
+	if len(nc.outBuf) > 0 {
+		n := copy(p, nc.outBuf)
+		nc.outBuf = nc.outBuf[n:]
+		return n, nil
+	}
+
+	byts, err := nc.br.Peek(2)
+	if err != nil {
+		return 0, err
+	}
+
+	if byts[0] == base.InterleavedFrameMagicByte {
+		var fr base.InterleavedFrame
+		if err := fr.Unmarshal(nc.br); err != nil {
+			return 0, err
+		}
+		// Canal 0 = RTP de vídeo: força SSRC=1 e SequenceNumber contínuo
+		if fr.Channel == 0 && len(fr.Payload) >= 12 {
+			nc.seq++
+			binary.BigEndian.PutUint16(fr.Payload[2:4], nc.seq)
+			binary.BigEndian.PutUint32(fr.Payload[8:12], 1)
+		}
+		size := 4 + len(fr.Payload)
+		buf := make([]byte, size)
+		_, _ = fr.MarshalTo(buf)
+		n := copy(p, buf)
+		if n < len(buf) {
+			nc.outBuf = buf[n:]
+		}
+		return n, nil
+	}
+
+	if byts[0] == 'R' && byts[1] == 'T' {
+		var res base.Response
+		if err := res.Unmarshal(nc.br); err != nil {
+			return 0, err
+		}
+		buf, err := res.Marshal()
+		if err != nil {
+			return 0, err
+		}
+		n := copy(p, buf)
+		if n < len(buf) {
+			nc.outBuf = buf[n:]
+		}
+		return n, nil
+	}
+
+	var req base.Request
+	if err := req.Unmarshal(nc.br); err != nil {
+		return 0, err
+	}
+	buf, err := req.Marshal()
+	if err != nil {
+		return 0, err
+	}
+	n := copy(p, buf)
+	if n < len(buf) {
+		nc.outBuf = buf[n:]
+	}
+	return n, nil
+}
+
 type cameraStream struct {
 	id             string
 	name           string
@@ -31,6 +119,8 @@ type cameraStream struct {
 	isH265         atomic.Bool
 	cancel         context.CancelFunc
 	packetCount    uint64
+	frameCount     uint64
+	ingestFPS      atomic.Int64
 	lastPacketNano atomic.Int64
 	stateMu        sync.RWMutex
 	lastError      string
@@ -205,6 +295,7 @@ func (e *Engine) ListCameras() []map[string]interface{} {
 		cam.sessMu.RUnlock()
 
 		pktCount := atomic.LoadUint64(&cam.packetCount)
+		frmCount := atomic.LoadUint64(&cam.frameCount)
 		lastNano := cam.lastPacketNano.Load()
 		var lastPacketStr string
 		if lastNano > 0 {
@@ -218,6 +309,8 @@ func (e *Engine) ListCameras() []map[string]interface{} {
 			"connected":        cam.connected.Load(),
 			"viewers":          sessCount,
 			"packets_received": pktCount,
+			"frames_received":  frmCount,
+			"ingest_fps":       cam.ingestFPS.Load(),
 			"last_packet":      lastPacketStr,
 			"last_error":       lastErr,
 			"codec":            codec,
@@ -273,12 +366,21 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			continue
 		}
 
-		// Utiliza RTSP over TCP para máxima estabilidade de quadros (P-frames e I-frames íntegros)
+		// Utiliza RTSP over TCP com normalizador de SSRC/SequenceNumber na conexão
+		// e buffer de socket ampliado para garantir 100% dos P-frames e I-frames em tempo real
 		transport := gortsplib.TransportTCP
+		dialer := &net.Dialer{Timeout: 5 * time.Second}
 		client := &gortsplib.Client{
 			Transport:    &transport,
 			ReadTimeout:  8 * time.Second,
 			WriteTimeout: 8 * time.Second,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				c, err := dialer.DialContext(ctx, network, address)
+				if err != nil {
+					return nil, err
+				}
+				return newRTSPNormalizerConn(c), nil
+			},
 		}
 
 		err = client.Start(u.Scheme, u.Host)
@@ -352,19 +454,202 @@ func (e *Engine) startRTSPIngest(ctx context.Context, cam *cameraStream) {
 			continue
 		}
 
-		// Repasse direto zero-copy e lock-free somente dos pacotes RTP de vídeo originais da câmera
+		var lastRTPTime uint32
+		var hasLastRTPTime bool
+		var framesInWindow int64
+		var outSeq uint16
+		windowStart := time.Now()
+
+		// Repasse zero-copy de RTP de vídeo com injeção automática de VPS/SPS/PPS nos Keyframes
 		client.OnPacketRTP(selectedMedia, selectedFormat, func(pkt *rtp.Packet) {
 			if !cam.connected.Load() {
 				cam.connected.Store(true)
 				cam.setError("")
 			}
 			cnt := atomic.AddUint64(&cam.packetCount, 1)
-			if cnt == 1 || cnt%60 == 0 {
-				cam.lastPacketNano.Store(time.Now().UnixNano())
+			now := time.Now()
+			if cnt == 1 || cnt%30 == 0 {
+				cam.lastPacketNano.Store(now.UnixNano())
 			}
 
+			if !hasLastRTPTime || pkt.Timestamp != lastRTPTime {
+				hasLastRTPTime = true
+				lastRTPTime = pkt.Timestamp
+				atomic.AddUint64(&cam.frameCount, 1)
+				framesInWindow++
+				if elapsed := now.Sub(windowStart).Seconds(); elapsed >= 1.0 {
+					cam.ingestFPS.Store(int64(float64(framesInWindow)/elapsed + 0.5))
+					framesInWindow = 0
+					windowStart = now
+				}
+			}
+
+			// Se for H.265, captura VPS/SPS/PPS em banda (Single NALU ou AP tipo 48)
+			// e injeta antes de cada Keyframe (IDR/CRA), além de garantir MTU <= 1200 bytes
+			if formaH265 != nil && len(pkt.Payload) >= 2 {
+				naluType := (pkt.Payload[0] >> 1) & 0x3F
+				switch naluType {
+				case 32: // VPS
+					_, sps, pps := formaH265.SafeParams()
+					formaH265.SafeSetParams(append([]byte(nil), pkt.Payload...), sps, pps)
+				case 33: // SPS
+					vps, _, pps := formaH265.SafeParams()
+					formaH265.SafeSetParams(vps, append([]byte(nil), pkt.Payload...), pps)
+				case 34: // PPS
+					vps, sps, _ := formaH265.SafeParams()
+					formaH265.SafeSetParams(vps, sps, append([]byte(nil), pkt.Payload...))
+				case 48: // Aggregation Packet (AP - RFC 7798)
+					off := 2
+					for off+2 <= len(pkt.Payload) {
+						sz := int(binary.BigEndian.Uint16(pkt.Payload[off : off+2]))
+						off += 2
+						if sz <= 0 || off+sz > len(pkt.Payload) {
+							break
+						}
+						subNALU := pkt.Payload[off : off+sz]
+						off += sz
+						if len(subNALU) >= 2 {
+							subType := (subNALU[0] >> 1) & 0x3F
+							switch subType {
+							case 32:
+								_, sps, pps := formaH265.SafeParams()
+								formaH265.SafeSetParams(append([]byte(nil), subNALU...), sps, pps)
+							case 33:
+								vps, _, pps := formaH265.SafeParams()
+								formaH265.SafeSetParams(vps, append([]byte(nil), subNALU...), pps)
+							case 34:
+								vps, sps, _ := formaH265.SafeParams()
+								formaH265.SafeSetParams(vps, sps, append([]byte(nil), subNALU...))
+							}
+						}
+					}
+				}
+
+				isKeyframeStart := (naluType >= 19 && naluType <= 21) ||
+					(naluType == 49 && len(pkt.Payload) >= 3 && (pkt.Payload[2]>>7) == 1 && ((pkt.Payload[2]&0x3F) >= 19 && (pkt.Payload[2]&0x3F) <= 21))
+
+				if isKeyframeStart {
+					vps, sps, pps := formaH265.SafeParams()
+					for _, paramNALU := range [][]byte{vps, sps, pps} {
+						if len(paramNALU) > 0 {
+							outSeq++
+							paramPkt := rtp.Packet{
+								Header: rtp.Header{
+									Version:        2,
+									PayloadType:    targetPT,
+									SequenceNumber: outSeq,
+									Timestamp:      pkt.Timestamp,
+									SSRC:           pkt.SSRC,
+									Marker:         false,
+								},
+								Payload: paramNALU,
+							}
+							_ = targetTrack.WriteRTP(&paramPkt)
+						}
+					}
+				}
+
+				// Re-fragmenta pacotes RTP H.265 maiores que 1200 bytes (vindos do RTSP/TCP)
+				// para nunca exceder o MTU UDP/SRTP do WebRTC na rede Wi-Fi
+				const maxWebRTCPayload = 1200
+				if len(pkt.Payload) > maxWebRTCPayload {
+					if naluType == 49 && len(pkt.Payload) > 3 {
+						// Fragmentation Unit (FU) grande -> divide mantendo cabeçalho FU (RFC 7798)
+						hdr0, hdr1, fuHdr := pkt.Payload[0], pkt.Payload[1], pkt.Payload[2]
+						origStart := (fuHdr >> 7) & 1
+						origEnd := (fuHdr >> 6) & 1
+						fuType := fuHdr & 0x3F
+						data := pkt.Payload[3:]
+						maxChunk := maxWebRTCPayload - 3
+
+						for off := 0; off < len(data); off += maxChunk {
+							endOff := off + maxChunk
+							isFirstChunk := (off == 0)
+							isLastChunk := false
+							if endOff >= len(data) {
+								endOff = len(data)
+								isLastChunk = true
+							}
+							sBit := uint8(0)
+							if isFirstChunk && origStart == 1 {
+								sBit = 1
+							}
+							eBit := uint8(0)
+							if isLastChunk && origEnd == 1 {
+								eBit = 1
+							}
+							chunkPayload := make([]byte, 3+(endOff-off))
+							chunkPayload[0] = hdr0
+							chunkPayload[1] = hdr1
+							chunkPayload[2] = (sBit << 7) | (eBit << 6) | fuType
+							copy(chunkPayload[3:], data[off:endOff])
+
+							outSeq++
+							fragPkt := rtp.Packet{
+								Header: rtp.Header{
+									Version:        2,
+									PayloadType:    targetPT,
+									SequenceNumber: outSeq,
+									Timestamp:      pkt.Timestamp,
+									SSRC:           pkt.SSRC,
+									Marker:         isLastChunk && pkt.Marker,
+								},
+								Payload: chunkPayload,
+							}
+							_ = targetTrack.WriteRTP(&fragPkt)
+						}
+						return
+					} else if naluType >= 1 && naluType <= 47 {
+						// Single NALU grande -> converte em fragmentos FU (Type 49) <= 1200 bytes
+						hdr0, hdr1 := pkt.Payload[0], pkt.Payload[1]
+						data := pkt.Payload[2:]
+						maxChunk := maxWebRTCPayload - 3
+
+						for off := 0; off < len(data); off += maxChunk {
+							endOff := off + maxChunk
+							isFirstChunk := (off == 0)
+							isLastChunk := false
+							if endOff >= len(data) {
+								endOff = len(data)
+								isLastChunk = true
+							}
+							sBit := uint8(0)
+							if isFirstChunk {
+								sBit = 1
+							}
+							eBit := uint8(0)
+							if isLastChunk {
+								eBit = 1
+							}
+							chunkPayload := make([]byte, 3+(endOff-off))
+							chunkPayload[0] = (hdr0 & 0b10000001) | (49 << 1)
+							chunkPayload[1] = hdr1
+							chunkPayload[2] = (sBit << 7) | (eBit << 6) | naluType
+							copy(chunkPayload[3:], data[off:endOff])
+
+							outSeq++
+							fragPkt := rtp.Packet{
+								Header: rtp.Header{
+									Version:        2,
+									PayloadType:    targetPT,
+									SequenceNumber: outSeq,
+									Timestamp:      pkt.Timestamp,
+									SSRC:           pkt.SSRC,
+									Marker:         isLastChunk && pkt.Marker,
+								},
+								Payload: chunkPayload,
+							}
+							_ = targetTrack.WriteRTP(&fragPkt)
+						}
+						return
+					}
+				}
+			}
+
+			outSeq++
 			p := *pkt
 			p.Header.PayloadType = targetPT
+			p.Header.SequenceNumber = outSeq
 			_ = targetTrack.WriteRTP(&p)
 		})
 

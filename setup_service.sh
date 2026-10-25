@@ -107,6 +107,12 @@ if [ "$EUID" -ne 0 ]; then
     echo -e "⚡ Habilitando inicialização automática no boot..."
     sudo systemctl enable argus.service
 
+    echo -e "🌐 Aplicando otimizações de rede no Kernel (BBR para Wi-Fi/RF e buffers WebRTC)..."
+    sudo modprobe tcp_bbr 2>/dev/null || true
+    sudo sysctl -w net.core.rmem_max=8388608 >/dev/null 2>&1 || true
+    sudo sysctl -w net.core.wmem_max=8388608 >/dev/null 2>&1 || true
+    sudo sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+
     echo -e "🚀 Iniciando serviço Argus..."
     sudo systemctl restart argus.service
 else
@@ -119,6 +125,12 @@ else
 
     echo -e "⚡ Habilitando inicialização automática no boot..."
     systemctl enable argus.service
+
+    echo -e "🌐 Aplicando otimizações de rede no Kernel (BBR para Wi-Fi/RF e buffers WebRTC)..."
+    modprobe tcp_bbr 2>/dev/null || true
+    sysctl -w net.core.rmem_max=8388608 >/dev/null 2>&1 || true
+    sysctl -w net.core.wmem_max=8388608 >/dev/null 2>&1 || true
+    sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
 
     echo -e "🚀 Iniciando serviço Argus..."
     systemctl restart argus.service

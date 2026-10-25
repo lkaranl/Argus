@@ -30,7 +30,9 @@ class WHEPPlayer {
 
     // Contadores para cálculo de FPS a cada 1s
     this.rvfcFrames = 0;
+    this.rvfcActive = false;
     this.prevTotalFrames = 0;
+    this.prevRtcDecodedFrames = 0;
     this.prevFpsTimestamp = performance.now();
     this.currentFps = 0;
 
@@ -161,20 +163,28 @@ class WHEPPlayer {
     return 0;
   }
 
+  armVideoFrameCallback() {
+    if (!this.video || typeof this.video.requestVideoFrameCallback !== "function" || this.rvfcActive) {
+      return;
+    }
+    this.rvfcActive = true;
+    const onFrame = () => {
+      this.rvfcFrames++;
+      if (this.video) {
+        this.video.requestVideoFrameCallback(onFrame);
+      } else {
+        this.rvfcActive = false;
+      }
+    };
+    this.video.requestVideoFrameCallback(onFrame);
+  }
+
   /**
    * Monitora e atualiza o indicador discreto de FPS a cada 1 segundo.
    * Verde (fps-active) quando >= 1 FPS; Vermelho (fps-zero) quando 0 FPS.
    */
   startFpsMonitor() {
-    if (this.video && typeof this.video.requestVideoFrameCallback === "function") {
-      const onFrame = () => {
-        this.rvfcFrames++;
-        if (this.video) {
-          this.video.requestVideoFrameCallback(onFrame);
-        }
-      };
-      this.video.requestVideoFrameCallback(onFrame);
-    }
+    this.armVideoFrameCallback();
 
     if (this.fpsTimer) clearInterval(this.fpsTimer);
     this.fpsTimer = setInterval(async () => {
@@ -182,32 +192,43 @@ class WHEPPlayer {
       const elapsedSec = Math.max((now - this.prevFpsTimestamp) / 1000, 0.5);
       this.prevFpsTimestamp = now;
 
-      let fps = 0;
+      // 1. Contagem via requestVideoFrameCallback
+      const rvfcFps = Math.round(this.rvfcFrames / elapsedSec);
+      this.rvfcFrames = 0;
 
-      if (this.rvfcFrames > 0) {
-        fps = Math.round(this.rvfcFrames / elapsedSec);
-        this.rvfcFrames = 0;
-      } else {
-        const total = this.getDecodedFrameCount();
-        if (total > 0 && this.prevTotalFrames > 0 && total >= this.prevTotalFrames) {
-          fps = Math.round((total - this.prevTotalFrames) / elapsedSec);
+      // 2. Contagem via getVideoPlaybackQuality / webkitDecodedFrameCount
+      let qualityFps = 0;
+      const total = this.getDecodedFrameCount();
+      if (total > 0) {
+        if (this.prevTotalFrames > 0 && total >= this.prevTotalFrames) {
+          qualityFps = Math.round((total - this.prevTotalFrames) / elapsedSec);
         }
         this.prevTotalFrames = total;
-
-        // Fallback via estatísticas WebRTC inbound-rtp caso a TV não exponha totalVideoFrames
-        if (fps === 0 && this.pc && this.pc.connectionState === "connected") {
-          try {
-            const stats = await this.pc.getStats();
-            stats.forEach((report) => {
-              if (report.type === "inbound-rtp" && report.kind === "video") {
-                if (typeof report.framesPerSecond === "number") {
-                  fps = Math.round(report.framesPerSecond);
-                }
-              }
-            });
-          } catch (e) {}
-        }
       }
+
+      // 3. Contagem nativa do motor WebRTC C++ (inbound-rtp framesPerSecond / framesDecoded)
+      let rtcFps = 0;
+      if (this.pc && this.pc.connectionState === "connected") {
+        try {
+          const stats = await this.pc.getStats();
+          stats.forEach((report) => {
+            if (report.type === "inbound-rtp" && report.kind === "video") {
+              if (typeof report.framesPerSecond === "number" && report.framesPerSecond > 0) {
+                rtcFps = Math.max(rtcFps, Math.round(report.framesPerSecond));
+              }
+              if (typeof report.framesDecoded === "number" && report.framesDecoded > 0) {
+                if (this.prevRtcDecodedFrames > 0 && report.framesDecoded >= this.prevRtcDecodedFrames) {
+                  const deltaFps = Math.round((report.framesDecoded - this.prevRtcDecodedFrames) / elapsedSec);
+                  rtcFps = Math.max(rtcFps, deltaFps);
+                }
+                this.prevRtcDecodedFrames = report.framesDecoded;
+              }
+            }
+          });
+        } catch (e) {}
+      }
+
+      let fps = Math.max(rvfcFps, qualityFps, rtcFps);
 
       if (this.video && (this.video.paused || !this.video.srcObject)) {
         fps = 0;
