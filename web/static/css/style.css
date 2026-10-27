@@ -52,13 +52,16 @@ body.fullscreen-active {
   gap: 6px;
   padding: 6px;
   background-color: #030407;
+  contain: layout size;
+  transform: translate3d(0, 0, 0);
 }
 
-/* Isolamento em camadas de hardware na GPU */
+/* Isolamento estrito em camadas de hardware na GPU VideoCore / Wayland Direct Scanout */
 .camera-card, .hud-card {
-  transform: translateZ(0);
+  transform: translate3d(0, 0, 0);
   will-change: transform;
   isolation: isolate;
+  contain: strict;
   background-color: var(--bg-card);
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
@@ -139,6 +142,10 @@ body.fullscreen-active {
   height: 100%;
   position: relative;
   background-color: #000000;
+  contain: strict;
+  isolation: isolate;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
 }
 
 .video-container video {
@@ -147,6 +154,9 @@ body.fullscreen-active {
   object-fit: cover;
   display: block;
   pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  will-change: transform;
 }
 
 .video-container .video-canvas {
@@ -158,6 +168,8 @@ body.fullscreen-active {
   display: none;
   pointer-events: none;
   z-index: 2;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
 }
 
 .video-container .video-canvas.active {
@@ -196,11 +208,13 @@ body.fullscreen-active {
   gap: 12px;
   z-index: 4;
   transition: opacity 0.3s ease;
+  contain: layout style paint;
 }
 
 .video-overlay.hidden {
   opacity: 0;
   visibility: hidden;
+  display: none !important;
   pointer-events: none;
 }
 
@@ -225,8 +239,11 @@ body.fullscreen-active {
   letter-spacing: 0.4px;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
-  background: rgba(8, 12, 18, 0.62);
+  background: rgba(8, 12, 18, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  contain: layout style paint;
+  will-change: contents;
+  transform: translateZ(0);
   transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
@@ -451,6 +468,8 @@ body.fullscreen-active {
   font-weight: 700;
   color: var(--accent-emerald);
   line-height: 1;
+  contain: layout style paint;
+  will-change: contents;
 }
 
 .clock-sec-lbl {
@@ -677,7 +696,7 @@ body.fullscreen-active {
 .solar-minimal-sun {
   font-size: 0.85rem;
   line-height: 1;
-  filter: drop-shadow(0 0 6px rgba(245, 197, 66, 0.7));
+  text-shadow: 0 0 6px rgba(245, 197, 66, 0.7);
 }
 
 .solar-minimal-title {
@@ -917,7 +936,7 @@ body.fullscreen-active {
   font-size: clamp(1.4rem, 3.4vh, 2.1rem);
   line-height: 1;
   transform: translateY(-2px);
-  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.22));
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
 }
 
 .today-temp-now {
