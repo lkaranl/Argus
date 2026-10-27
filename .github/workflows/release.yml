@@ -1,0 +1,50 @@
+name: Release
+
+'on':
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: true
+
+      - name: Build and Package
+        run: |
+          mkdir -p dist
+          TAG="${GITHUB_REF_NAME}"
+
+          for ARCH in amd64 arm64; do
+            echo "::group::Compilando para linux/${ARCH}"
+            STAGE_DIR="dist/stage_${ARCH}"
+            BIN_NAME="argus-server-linux-${ARCH}"
+            mkdir -p "${STAGE_DIR}"
+
+            CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -ldflags="-s -w" -o "${STAGE_DIR}/${BIN_NAME}" ./cmd/server
+            cp argus.service "${STAGE_DIR}/"
+            cp config.example.yaml "${STAGE_DIR}/"
+
+            PKG_NAME="argus-${TAG}-linux-${ARCH}.tar.gz"
+            tar -czf "dist/${PKG_NAME}" -C "${STAGE_DIR}" "${BIN_NAME}" argus.service config.example.yaml
+            echo "Pacote gerado: dist/${PKG_NAME}"
+            echo "::endgroup::"
+          done
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          generate_release_notes: true
