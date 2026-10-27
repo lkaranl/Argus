@@ -117,10 +117,12 @@ class WHEPPlayer {
   }
 
   isVideoRendering() {
-    if (!this.video || !this.video.srcObject || this.video.paused) return false;
+    if (!this.video || !this.video.srcObject) return false;
     return (
-      this.video.readyState >= 2 &&
-      (this.getDecodedFrameCount() > 0 || this.video.currentTime > 0 || this.rvfcFrames > 0)
+      this.video.currentTime > 0 ||
+      this.getDecodedFrameCount() > 0 ||
+      this.rvfcFrames > 0 ||
+      this.currentFps > 0
     );
   }
 
@@ -128,20 +130,10 @@ class WHEPPlayer {
     if (!this.video || !this.video.srcObject) return;
     this.enforceMutedState();
 
-    // Se o vídeo já não está pausado (autoplay nativo do Safari/Firefox em ação),
-    // NUNCA chame video.play() novamente para não cancelar o m_autoPlay interno do WebKit/Gecko
+    // Se o vídeo já está tocando, sincroniza status online
     if (!this.video.paused) {
-      if (this.video.readyState >= 1) {
-        this.stopPlayRetryLoop();
-        this.updateStatus("ONLINE", "", "online");
-      }
-      return;
-    }
-
-    // Nunca chame video.play() enquanto readyState === 0 (antes de loadedmetadata):
-    // no Safari e no Firefox, chamar play() antes do MediaStream receber o primeiro frame
-    // lança NotAllowedError e desativa o autoplay nativo do elemento <video>
-    if (!fromUserGesture && this.video.readyState < 1) {
+      this.stopPlayRetryLoop();
+      this.updateStatus("ONLINE", "", "online");
       return;
     }
 
@@ -179,14 +171,12 @@ class WHEPPlayer {
         this.stopPlayRetryLoop();
         return;
       }
-      if (!this.video.paused && this.video.readyState >= 1) {
+      if (!this.video.paused) {
         this.stopPlayRetryLoop();
         this.updateStatus("ONLINE", "", "online");
         return;
       }
-      if (this.video.readyState >= 1 && this.video.paused) {
-        this.tryPlay();
-      }
+      this.tryPlay();
     }, 400);
   }
 
@@ -318,6 +308,7 @@ class WHEPPlayer {
     if (fps >= 1) {
       this.fpsBadge.classList.add("fps-active");
       this.fpsBadge.classList.remove("fps-zero");
+      this.updateStatus("ONLINE", "", "online");
     } else {
       this.fpsBadge.classList.add("fps-zero");
       this.fpsBadge.classList.remove("fps-active");
@@ -327,7 +318,7 @@ class WHEPPlayer {
   /**
    * Watchdog contínuo: garante que o vídeo nunca fique pausado na TV,
    * mantém a reprodução colada no tempo real (live-edge) após oscilações de RF 2.4GHz
-   * e reconecta rapidamente se o decodificador parar de receber quadros por > 8s.
+   * e reconecta se o decodificador parar de receber quadros por período prolongado.
    */
   startWatchdog() {
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);
@@ -345,18 +336,19 @@ class WHEPPlayer {
         this.updateStatus("ONLINE", "", "online");
       }
 
-      // Verifica se a conexão ficou congelada sem decodificar novos frames por mais de 8s
+      // Verifica se a conexão ficou congelada sem decodificar novos frames
       const isPcConnected =
         this.pc &&
         (this.pc.connectionState === "connected" ||
           this.pc.iceConnectionState === "connected" ||
           this.pc.iceConnectionState === "completed");
 
-      if (isPcConnected && this.connectedAt > 0 && Date.now() - this.connectedAt > 8000) {
+      if (isPcConnected && this.connectedAt > 0) {
         const now = Date.now();
-        const noFramesYet = !this.isVideoRendering() && this.prevRtcDecodedFrames === 0 && now - this.connectedAt > 8500;
-        const stalledByFrames = this.lastFrameProgressAt > 0 && now - this.lastFrameProgressAt > 8000;
-        const stalledByTime = this.lastFrameProgressAt === 0 && this.lastTimeUpdate > 0 && now - this.lastTimeUpdate > 9000;
+        // Dá até 25s para o primeiro frame da transcodificação H.264 chegar e decodificar
+        const noFramesYet = !this.isVideoRendering() && this.prevRtcDecodedFrames === 0 && now - this.connectedAt > 25000;
+        const stalledByFrames = this.lastFrameProgressAt > 0 && now - this.lastFrameProgressAt > 18000;
+        const stalledByTime = this.lastFrameProgressAt === 0 && this.lastTimeUpdate > 0 && now - this.lastTimeUpdate > 18000;
 
         if (noFramesYet || stalledByFrames || stalledByTime) {
           this.connectedAt = now;
@@ -421,8 +413,8 @@ class WHEPPlayer {
         this.enforceMutedState();
         this.video.srcObject = inboundStream;
 
-        // Não chama video.play() sincronicamente aqui (readyState === 0):
-        // aguarda o primeiro frame (loadedmetadata / loadeddata / canplay) para preservar o autoplay nativo do Safari e Firefox
+        // Dispara reprodução imediata e mantém loop de retry
+        this.tryPlay();
         this.startPlayRetryLoop();
       };
 
@@ -431,7 +423,7 @@ class WHEPPlayer {
           this.reconnectDelay = 1200;
           if (this.connectedAt === 0) this.connectedAt = Date.now();
           this.lastFrameProgressAt = Date.now();
-          if (this.video && this.video.readyState >= 1) {
+          if (this.video) {
             this.tryPlay();
           }
         } else if (state === "disconnected" || state === "failed" || state === "closed") {
