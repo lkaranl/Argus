@@ -15,8 +15,8 @@
   --accent-danger: #ff5252;
   --text-muted: rgba(255, 255, 255, 0.55);
 
-  --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "SF Mono", "Segoe UI Mono", Monaco, Consolas, "Courier New", monospace;
+  --font-main: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Segoe UI Mono", Monaco, Consolas, "Courier New", monospace;
 }
 
 * {
@@ -279,378 +279,767 @@ body.fullscreen-active {
 }
 
 /* ------------------------------------------------------------------------------
-   QUADRANTE 4: HUD TÁTICO CLEAN
+   QUADRANTE 4: HUD TÁTICO CLEAN DE INFORMAÇÕES (2x2 PROPORÇÃO 2/3 + 1/3)
    ------------------------------------------------------------------------------ */
 .hud-card {
-  background: linear-gradient(145deg, #090e17 0%, #06090f 100%);
-  border-color: rgba(0, 230, 118, 0.2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: #040609;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-}
-
-.hud-widgets-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  gap: 10px;
-  justify-content: space-between;
-}
-
-/* ------------------------------------------------------------------------------
-   WIDGET 1: RELÓGIO MODULAR APPLE WATCH ULTRA (PROTAGONISTA DO HUD)
-   ------------------------------------------------------------------------------ */
-.cctv-clock-widget {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  flex: 1.55;
-  min-height: 0;
-}
-
-.apple-clock-card {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at 50% 35%, rgba(0, 230, 118, 0.12) 0%, rgba(5, 8, 14, 0.98) 85%);
-  border: 1px solid rgba(0, 230, 118, 0.32);
-  border-radius: 20px;
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 230, 118, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  justify-content: stretch;
   overflow: hidden;
 }
 
-.apple-bezel-svg {
-  position: absolute;
-  inset: 0;
+.hud-widgets-container {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 0;
+  height: 100%;
+}
+
+/* -------------------------------------------------------------------------
+   LINHA 1: RELÓGIO UNIFICADO (2/3) + MINI CALENDÁRIO COM FERIADOS (1/3)
+   ------------------------------------------------------------------------- */
+.cctv-clock-widget {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.clock-calendar-split-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   width: 100%;
   height: 100%;
-  pointer-events: none;
-  z-index: 2;
+  min-height: 0;
 }
 
-.apple-tick {
-  stroke: rgba(255, 255, 255, 0.16);
-  transition: stroke 0.15s ease, filter 0.15s ease;
+.clock-col-2-3 {
+  flex: 2 1 0;
+  min-width: 0;
 }
 
-.apple-tick.major {
-  stroke: rgba(255, 255, 255, 0.34);
+.clock-col-1-3 {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
-.apple-tick.active {
-  stroke: var(--accent-emerald);
-}
-
-.apple-tick.active.major {
-  stroke: #ffffff;
-}
-
-.apple-tick.head {
-  stroke: #ffffff !important;
-  stroke-width: 3.5px !important;
-  filter: drop-shadow(0 0 8px var(--accent-emerald)) drop-shadow(0 0 3px #ffffff);
-}
-
-.apple-dial-content {
+/* Card 2/3: Relógio Unificado */
+.apple-clock-card.clock-unified-card {
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 16px 32px;
+  background: radial-gradient(circle at 40% 40%, rgba(0, 230, 118, 0.06) 0%, rgba(4, 6, 9, 0.98) 75%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  padding: 10px 16px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  z-index: 3;
+  justify-content: space-between;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
-.apple-dial-header {
+.clock-unified-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 440px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 4px;
 }
 
-.apple-dial-date {
-  font-family: var(--font-mono);
-  font-size: clamp(0.88rem, 1.35vw, 1.2rem);
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: rgba(255, 255, 255, 0.88);
-}
-
-.apple-live-status {
+.clock-header-left {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .apple-status-beacon {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent-emerald);
-  box-shadow: 0 0 8px var(--accent-emerald);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--accent-emerald);
 }
 
-.apple-status-text {
-  font-family: var(--font-mono);
-  font-size: clamp(0.8rem, 1.15vw, 1.05rem);
+.clock-weekday-txt {
+  font-family: var(--font-main);
+  font-size: clamp(0.58rem, 1.25vh, 0.74rem);
   font-weight: 700;
-  letter-spacing: 1.2px;
+  letter-spacing: 1.4px;
   color: var(--accent-emerald);
+  text-transform: uppercase;
 }
 
-.apple-time-display {
+.clock-full-date {
+  font-family: var(--font-main);
+  font-size: clamp(0.68rem, 1.45vh, 0.90rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 0.5px;
+}
+
+.clock-unified-center {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
-.apple-digits-wrap {
+.clock-digits-cluster {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
 }
 
 .apple-digit {
   font-family: var(--font-main);
-  font-size: clamp(5.4rem, 8.8vw, 8.2rem);
-  font-weight: 700;
-  line-height: 0.92;
+  font-size: clamp(4.4rem, 13.5vh, 7.2rem);
+  font-weight: 600;
+  line-height: 0.88;
   color: #ffffff;
   letter-spacing: -3px;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 28px rgba(255, 255, 255, 0.16);
 }
 
 .apple-colon {
-  font-size: clamp(4.5rem, 7.2vw, 6.8rem);
+  font-family: var(--font-main);
+  font-size: clamp(3.4rem, 11.0vh, 5.8rem);
   color: var(--accent-emerald);
-  line-height: 0.92;
+  line-height: 0.85;
   font-weight: 400;
-  margin: 0 3px;
-  transform: translateY(-6px);
-  text-shadow: 0 0 18px rgba(0, 230, 118, 0.5);
-  animation: pulseColon 1s steps(2, start) infinite;
+  margin: 0 4px;
+  transform: translateY(-4px);
+  opacity: 0.9;
 }
 
-@keyframes pulseColon {
-  from { opacity: 0.3; }
-  to { opacity: 1; }
-}
-
-.apple-seconds-pill {
-  font-family: var(--font-mono);
-  font-size: clamp(1.35rem, 2.2vw, 2rem);
-  font-weight: 800;
-  color: var(--accent-emerald);
-  background: rgba(0, 230, 118, 0.15);
-  border: 1px solid rgba(0, 230, 118, 0.4);
-  padding: 4px 10px;
-  border-radius: 8px;
-  letter-spacing: 1px;
-  font-variant-numeric: tabular-nums;
-  box-shadow: 0 0 12px rgba(0, 230, 118, 0.15);
-}
-
-/* ------------------------------------------------------------------------------
-   WIDGET 2: USINA SOLAR & CLIMA (COMPACTO / SECUNDÁRIO)
-   ------------------------------------------------------------------------------ */
-.cctv-solar-widget {
-  width: 100%;
-  flex: 0 0 auto;
-  display: flex;
-}
-
-.tesla-solar-card {
-  width: 100%;
-  background: rgba(10, 14, 22, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  padding: 9px 14px;
+.clock-badge-cluster {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  align-items: flex-start;
   gap: 6px;
 }
 
-.solar-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.solar-title-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.solar-icon-sun {
-  font-size: 1rem;
-}
-
-.solar-titles {
-  display: flex;
-  flex-direction: column;
-}
-
-.solar-card-title {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.solar-card-subtitle {
-  font-size: 0.6rem;
-  color: var(--text-muted);
-}
-
-.tesla-live-beacon {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.58rem;
-  font-weight: 700;
-  color: var(--accent-emerald);
-  background: rgba(0, 230, 118, 0.08);
-  padding: 2px 7px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 230, 118, 0.22);
-}
-
-.beacon-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent-emerald);
-  box-shadow: 0 0 5px var(--accent-emerald);
-}
-
-/* Métricas Compactas Tesla Style */
-.solar-hero-metrics {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  padding: 2px 0;
-}
-
-.solar-hero-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.hero-stat-label {
-  font-family: var(--font-mono);
-  font-size: 0.56rem;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  color: var(--text-muted);
-}
-
-.hero-stat-val-wrap {
+.clock-inline-seconds {
   display: flex;
   align-items: baseline;
   gap: 3px;
+  background: rgba(0, 230, 118, 0.12);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+  padding: 4px 8px;
+  border-radius: 8px;
 }
 
-.hero-stat-icon {
-  font-size: 0.9rem;
-}
-
-.hero-stat-number {
-  font-family: var(--font-main);
-  font-size: clamp(1.45rem, 2.1vw, 1.85rem);
+.clock-sec-val {
+  font-family: var(--font-mono);
+  font-size: clamp(1.05rem, 2.5vh, 1.6rem);
   font-weight: 700;
+  color: var(--accent-emerald);
   line-height: 1;
-  letter-spacing: -0.5px;
+}
+
+.clock-sec-lbl {
+  font-family: var(--font-main);
+  font-size: clamp(0.46rem, 0.95vh, 0.58rem);
+  font-weight: 700;
+  color: rgba(0, 230, 118, 0.8);
+}
+
+.clock-inline-period {
+  font-family: var(--font-main);
+  font-size: clamp(0.54rem, 1.15vh, 0.68rem);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Card 1/3: Mini Calendário com Feriados */
+.apple-clock-card.calendar-mini-card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 50% 30%, rgba(245, 197, 66, 0.05) 0%, rgba(4, 5, 8, 0.98) 75%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  flex-shrink: 0;
+  padding-bottom: 3px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cal-title {
+  font-family: var(--font-main);
+  font-size: clamp(0.58rem, 1.25vh, 0.72rem);
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #ffffff;
+  text-transform: uppercase;
+}
+
+.cal-holiday-tag {
+  font-family: var(--font-mono);
+  font-size: clamp(0.44rem, 0.95vh, 0.56rem);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #F5C542;
+}
+
+.cal-weekdays-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: clamp(0.48rem, 1.05vh, 0.60rem);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 3px;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 1fr;
+  text-align: center;
+  gap: 2px;
+  flex: 1 1 0;
+  min-height: 0;
+  align-items: center;
+  margin: 3px 0;
+}
+
+.cal-day {
+  font-family: var(--font-mono);
+  font-size: clamp(0.54rem, 1.2vh, 0.70rem);
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.cal-day.cal-today {
+  background: var(--accent-emerald);
+  color: #000000 !important;
+  font-weight: 800;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.6);
+}
+
+.cal-day.cal-holiday {
+  color: #F5C542;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(245, 197, 66, 0.4);
+}
+
+.cal-day.cal-today.cal-holiday {
+  background: #F5C542;
+  color: #000000 !important;
+  box-shadow: 0 0 8px rgba(245, 197, 66, 0.8);
+}
+
+.cal-next-holiday {
+  width: 100%;
+  font-family: var(--font-main);
+  font-size: clamp(0.46rem, 1.0vh, 0.58rem);
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 3px 6px;
+  border-radius: 5px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.cal-next-holiday b {
+  color: #F5C542;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+   LINHA 2: MINHA ENERGIA SOLAR (2/3) + CLIMA HOJE E AMANHÃ (1/3)
+   ------------------------------------------------------------------------- */
+.cctv-solar-widget {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.solar-weather-split-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.solar-col-2-3 {
+  flex: 2 1 0;
+  min-width: 0;
+}
+
+.solar-col-1-3 {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.solar-minimal-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  background: radial-gradient(circle at 50% 32%, rgba(245, 197, 66, 0.08) 0%, rgba(4, 5, 8, 0.98) 70%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  gap: 3px;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+.solar-corner-dash {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.60rem;
+  color: rgba(255, 255, 255, 0.45);
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: color 0.2s, border-color 0.2s;
+  z-index: 4;
+}
+
+.solar-corner-dash:hover {
+  color: #F5C542;
+  border-color: rgba(245, 197, 66, 0.4);
+}
+
+.solar-minimal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.solar-minimal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(245, 197, 66, 0.55);
+  box-shadow: 0 0 6px rgba(245, 197, 66, 0.5);
+}
+
+.solar-minimal-sun {
+  font-size: 0.85rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(245, 197, 66, 0.7));
+}
+
+.solar-minimal-title {
+  font-family: var(--font-main);
+  font-size: clamp(0.62rem, 1.25vh, 0.76rem);
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+}
+
+.solar-minimal-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 1px;
+}
+
+.solar-minimal-power-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.solar-minimal-power-val {
+  font-family: var(--font-main);
+  font-size: clamp(1.75rem, 4.0vh, 2.5rem);
+  font-weight: 700;
+  line-height: 0.95;
+  color: #F5C542;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 20px rgba(245, 197, 66, 0.35);
+}
+
+.solar-minimal-power-unit {
+  font-family: var(--font-main);
+  font-size: clamp(0.72rem, 1.5vh, 0.92rem);
+  font-weight: 700;
+  color: #D4A72C;
+}
+
+.solar-minimal-power-sub {
+  font-family: var(--font-main);
+  font-size: clamp(0.46rem, 0.9vh, 0.56rem);
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+}
+
+/* Gráfico de Barras: Geração dos Últimos 7 Dias */
+.solar-week-chart {
+  width: 100%;
+  flex: 2 1 0;
+  min-height: 60px;
+  max-height: 110px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  align-items: stretch;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  box-sizing: border-box;
+}
+
+.week-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  gap: 3px;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  transition: all 0.25s ease;
+}
+
+.week-val {
+  font-family: var(--font-mono);
+  font-size: clamp(0.52rem, 1.1vh, 0.68rem);
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.week-bar-track {
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 32px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.week-bar {
+  width: 8px;
+  min-height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: height 0.4s ease-out;
+}
+
+.week-day {
+  font-family: var(--font-main);
+  font-size: clamp(0.48rem, 1.0vh, 0.62rem);
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.week-col.week-empty {
+  opacity: 0.35;
+}
+
+.week-col.week-empty .week-val {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.week-col.week-empty .week-bar {
+  height: 4px !important;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+/* HOJE: Coluna de Destaque Dourado */
+.week-col.week-today {
+  background: transparent;
+}
+
+.week-col.week-today .week-bar {
+  width: 10px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #FFF099 0%, #F5C542 55%, #E0A810 100%);
+  box-shadow: 0 0 14px rgba(245, 197, 66, 0.7), 0 0 3px rgba(255, 240, 153, 0.8);
+}
+
+.week-col.week-today .week-val {
+  font-size: clamp(0.66rem, 1.45vh, 0.88rem);
+  font-weight: 800;
+  color: #FFF2A8;
+  text-shadow: 0 0 10px rgba(245, 197, 66, 0.6);
+}
+
+.week-col.week-today .week-day {
+  font-size: clamp(0.54rem, 1.15vh, 0.70rem);
+  font-weight: 800;
+  color: #F5C542;
+  letter-spacing: 1px;
+}
+
+/* Rodapé: 3 Cards (HOJE KWH | MÊS KWH | ANO MWH) */
+.solar-minimal-pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.solar-kpi-pill {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.solar-kpi-val {
+  font-family: var(--font-main);
+  font-size: clamp(0.82rem, 1.8vh, 1.08rem);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #ffffff;
   font-variant-numeric: tabular-nums;
 }
 
-.hero-stat-number.stat-power {
-  color: var(--accent-amber);
-}
-
-.hero-stat-number.stat-yield {
-  color: var(--accent-emerald);
-}
-
-.hero-stat-unit {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
-.solar-hero-divider {
-  width: 1px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.07);
-}
-
-/* Faixa Compacta de Previsão */
-.solar-forecast-strip {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  background: rgba(0, 0, 0, 0.22);
-  border-radius: 8px;
-  padding: 4px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.03);
-}
-
-.forecast-strip-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.forecast-day-name {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.forecast-day-icon {
-  font-size: 0.85rem;
-}
-
-.forecast-day-temp {
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
+.solar-kpi-lbl {
+  font-family: var(--font-main);
+  font-size: clamp(0.44rem, 0.9vh, 0.56rem);
   font-weight: 600;
+  letter-spacing: 0.8px;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Card 1/3: Clima Hoje & Previsão Amanhã */
+.weather-dual-card {
+  background: radial-gradient(circle at 50% 28%, rgba(0, 210, 255, 0.06) 0%, rgba(4, 5, 8, 0.98) 75%);
+}
+
+.weather-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 6px var(--accent-emerald);
+}
+
+.today-hero-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  gap: 2px;
+  min-height: 0;
+  width: 100%;
+}
+
+.today-main-temp-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.today-weather-icon {
+  font-size: clamp(1.4rem, 3.4vh, 2.1rem);
+  line-height: 1;
+  transform: translateY(-2px);
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.22));
+}
+
+.today-temp-now {
+  font-family: var(--font-main);
+  font-size: clamp(1.85rem, 4.6vh, 2.75rem);
+  font-weight: 700;
+  line-height: 0.95;
   color: #ffffff;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
 }
 
-.forecast-day-temp small {
-  color: var(--text-muted);
+.today-temp-unit {
+  font-family: var(--font-main);
+  font-size: clamp(0.80rem, 1.9vh, 1.10rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
 }
 
-.forecast-pill {
-  font-family: var(--font-mono);
-  font-size: 0.54rem;
-  font-weight: 800;
-  padding: 1px 5px;
-  border-radius: 4px;
-  border: 1px solid;
-  letter-spacing: 0.5px;
+.today-weather-desc {
+  font-family: var(--font-main);
+  font-size: clamp(0.54rem, 1.15vh, 0.70rem);
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
-.forecast-strip-sep {
-  width: 1px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.07);
+.today-minmax-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-main);
+  font-size: clamp(0.52rem, 1.1vh, 0.66rem);
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 1px;
 }
+
+.today-minmax-pill b {
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 600;
+}
+
+.minmax-dot {
+  opacity: 0.4;
+}
+
+/* Card Escuro Inferior: Dedicado a AMANHÃ */
+.tomorrow-footer-card {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.tomorrow-footer-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  gap: 1px;
+}
+
+.tomorrow-badge-lbl {
+  font-family: var(--font-main);
+  font-size: clamp(0.50rem, 1.0vh, 0.62rem);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #F5C542;
+  text-transform: uppercase;
+}
+
+.tomorrow-footer-desc {
+  font-family: var(--font-main);
+  font-size: clamp(0.46rem, 0.9vh, 0.56rem);
+  color: rgba(255, 255, 255, 0.48);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.tomorrow-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.tomorrow-footer-icon {
+  font-size: clamp(0.90rem, 1.9vh, 1.15rem);
+  line-height: 1;
+}
+
+.tomorrow-footer-temps {
+  font-family: var(--font-main);
+  font-size: clamp(0.80rem, 1.75vh, 1.02rem);
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tomorrow-footer-temps b {
+  font-weight: 700;
+}
+
+.tomorrow-footer-temps small {
+  font-size: 0.8em;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.48);
+}
+

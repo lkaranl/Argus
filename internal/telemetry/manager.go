@@ -23,18 +23,20 @@ type ServerStatus struct {
 
 // CombinedTelemetry consolida todo o estado que o HUD tático consome em tempo real
 type CombinedTelemetry struct {
-	Solar     *solar.SolarData     `json:"solar"`
-	Weather   *weather.WeatherData `json:"weather"`
-	Server    ServerStatus         `json:"server"`
-	Timestamp int64                `json:"timestamp"`
+	Solar        *solar.SolarData     `json:"solar"`
+	SolarHistory []solar.DailySlot    `json:"solar_history,omitempty"`
+	Weather      *weather.WeatherData `json:"weather"`
+	Server       ServerStatus         `json:"server"`
+	Timestamp    int64                `json:"timestamp"`
 }
 
 // Manager coordena a coleta periódica e distribuição via SSE
 type Manager struct {
-	cfg         *config.Config
-	solarClient *solar.Client
-	weatherCli  *weather.Client
-	broker      *sse.Broker
+	cfg          *config.Config
+	solarClient  *solar.Client
+	solarHistory *solar.HistoryStore
+	weatherCli   *weather.Client
+	broker       *sse.Broker
 
 	startTime time.Time
 	latest    *CombinedTelemetry
@@ -48,18 +50,21 @@ func NewManager(
 	weatherCli *weather.Client,
 	broker *sse.Broker,
 ) *Manager {
+	histStore := solar.NewHistoryStore("")
 	return &Manager{
-		cfg:         cfg,
-		solarClient: solarClient,
-		weatherCli:  weatherCli,
-		broker:      broker,
-		startTime:   time.Now(),
+		cfg:          cfg,
+		solarClient:  solarClient,
+		solarHistory: histStore,
+		weatherCli:   weatherCli,
+		broker:       broker,
+		startTime:    time.Now(),
 		latest: &CombinedTelemetry{
 			Solar: &solar.SolarData{
 				Available:     false,
 				PowerRealtime: "0.00 kW",
 				YieldToday:    "0.0 kWh",
 			},
+			SolarHistory: histStore.GetSlots(7, 0),
 			Weather: &weather.WeatherData{
 				Available:   false,
 				CurrentTemp: 28,
@@ -148,11 +153,34 @@ func (m *Manager) GetLatest() *CombinedTelemetry {
 func (m *Manager) refreshSolar(ctx context.Context) {
 	data, err := m.solarClient.FetchData(ctx)
 	if err == nil && data != nil {
+		todayStr := time.Now().Format("2006-01-02")
+		if data.YieldTodayKWh > 0 && m.solarHistory != nil {
+			m.solarHistory.RecordDailyYield(todayStr, data.YieldTodayKWh)
+		}
+
 		m.mu.Lock()
 		m.latest.Solar = data
+		if m.solarHistory != nil {
+			m.latest.SolarHistory = m.solarHistory.GetSlots(7, data.YieldTodayKWh)
+		}
 		m.latest.Timestamp = time.Now().Unix()
 		m.mu.Unlock()
 	}
+}
+
+// GetSolarHistory retorna o histórico dos últimos N dias para a API REST
+func (m *Manager) GetSolarHistory(days int) []solar.DailySlot {
+	m.mu.RLock()
+	todayYield := 0.0
+	if m.latest != nil && m.latest.Solar != nil {
+		todayYield = m.latest.Solar.YieldTodayKWh
+	}
+	m.mu.RUnlock()
+
+	if m.solarHistory == nil {
+		return nil
+	}
+	return m.solarHistory.GetSlots(days, todayYield)
 }
 
 func (m *Manager) refreshWeather(ctx context.Context) {

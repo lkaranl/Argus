@@ -72,4 +72,21 @@ func TestServerRoutes(t *testing.T) {
 	if recCams.Code != http.StatusOK {
 		t.Errorf("Rota /api/cameras retornou status %d", recCams.Code)
 	}
+
+	// 4. Testa rota de histórico solar /api/solar/history
+	reqHistory := httptest.NewRequest("GET", "/api/solar/history?days=7", nil)
+	recHistory := httptest.NewRecorder()
+	router.ServeHTTP(recHistory, reqHistory)
+
+	if recHistory.Code != http.StatusOK {
+		t.Errorf("Rota /api/solar/history retornou status %d", recHistory.Code)
+	}
+
+	var histResp map[string][]map[string]interface{}
+	if err := json.Unmarshal(recHistory.Body.Bytes(), &histResp); err != nil {
+		t.Fatalf("Erro ao decodificar JSON de /api/solar/history: %v", err)
+	}
+	if len(histResp["days"]) != 7 {
+		t.Errorf("Esperava 7 slots de histórico solar, obteve %d", len(histResp["days"]))
+	}
 }

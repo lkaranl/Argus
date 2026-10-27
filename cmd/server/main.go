@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -52,6 +53,21 @@ func setupRouter(
 		// Canal SSE persistente em tempo real
 		api.Get("/events", func(w http.ResponseWriter, r *http.Request) {
 			broker.ServeHTTP(w, r)
+		})
+
+		// Histórico de geração solar dos últimos N dias (padrão 7 dias)
+		api.Get("/solar/history", func(w http.ResponseWriter, r *http.Request) {
+			days := 7
+			if q := r.URL.Query().Get("days"); q != "" {
+				if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
+					days = parsed
+				}
+			}
+			slots := telemetryMgr.GetSolarHistory(days)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"days": slots,
+			})
 		})
 
 		// Healthcheck e diagnóstico
