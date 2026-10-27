@@ -22,7 +22,7 @@ func generateSessionID() string {
 
 func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 15 * time.Second,
 		Transport: &http.Transport{
 			Proxy: nil, // Garante que nunca use proxy para 127.0.0.1
 		},

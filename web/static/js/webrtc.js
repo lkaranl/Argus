@@ -482,7 +482,7 @@ class WHEPPlayer {
           : offer.sdp;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const whepUrl = `/api/whep/${this.cameraId}?stream=${this.streamProfile || "sub"}`;
       const resp = await fetch(whepUrl, {
