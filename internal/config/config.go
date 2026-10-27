@@ -19,9 +19,10 @@ type ServerConfig struct {
 
 // CameraConfig define os parâmetros de cada câmera IP monitorada
 type CameraConfig struct {
-	ID      string `yaml:"id"`
-	Name    string `yaml:"name"`
-	RTSPURL string `yaml:"rtsp_url"`
+	ID           string `yaml:"id"`
+	Name         string `yaml:"name"`
+	RTSPURL      string `yaml:"rtsp_url"`
+	SubstreamURL string `yaml:"substream_url,omitempty"`
 }
 
 // SolarConfig define os parâmetros para coleta de telemetria fotovoltaica

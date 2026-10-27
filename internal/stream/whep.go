@@ -66,10 +66,26 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 		return
 	}
 
-	cam, exists := e.GetCamera(cameraID)
+	targetID := cameraID
+	streamReq := r.URL.Query().Get("stream")
+	if streamReq == "sub" || strings.HasSuffix(cameraID, "_sub") {
+		subID := strings.TrimSuffix(cameraID, "_sub") + "_sub"
+		if _, exists := e.GetCamera(subID); exists {
+			targetID = subID
+		}
+	} else if streamReq == "main" {
+		targetID = strings.TrimSuffix(cameraID, "_sub")
+	}
+
+	cam, exists := e.GetCamera(targetID)
 	if !exists {
-		http.Error(w, fmt.Sprintf("Câmera '%s' não encontrada", cameraID), http.StatusNotFound)
-		return
+		// Fallback para a câmera solicitada
+		cam, exists = e.GetCamera(cameraID)
+		if !exists {
+			http.Error(w, fmt.Sprintf("Câmera '%s' não encontrada", cameraID), http.StatusNotFound)
+			return
+		}
+		targetID = cameraID
 	}
 
 	switch r.Method {
@@ -82,7 +98,7 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 
 		// Se o stream nativo ainda não estiver conectado, tenta negociar com go2rtc se estiver ativo
 		if !cam.connected.Load() {
-			if ans, ok := tryGo2RTC(cameraID, body); ok {
+			if ans, ok := tryGo2RTC(targetID, body); ok {
 				w.Header().Set("Content-Type", "application/sdp")
 				w.WriteHeader(http.StatusCreated)
 				_, _ = w.Write(ans)
@@ -181,7 +197,7 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 
 		// Responde com formato padrão WHEP
 		w.Header().Set("Content-Type", "application/sdp")
-		w.Header().Set("Location", fmt.Sprintf("/api/whep/%s/session/%s", cameraID, sessionID))
+		w.Header().Set("Location", fmt.Sprintf("/api/whep/%s/session/%s", targetID, sessionID))
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(pc.LocalDescription().SDP))
 
@@ -196,6 +212,20 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 				delete(cam.sessions, sessionID)
 			}
 			cam.sessMu.Unlock()
+
+			// Também tenta no par mainstream/substream associado
+			altID := strings.TrimSuffix(targetID, "_sub")
+			if altID == targetID {
+				altID = targetID + "_sub"
+			}
+			if altCam, ok := e.GetCamera(altID); ok {
+				altCam.sessMu.Lock()
+				if pc, ok := altCam.sessions[sessionID]; ok {
+					_ = pc.Close()
+					delete(altCam.sessions, sessionID)
+				}
+				altCam.sessMu.Unlock()
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 

@@ -13,6 +13,7 @@ class WHEPPlayer {
     this.statusText = statusTextElement;
     this.fpsBadge = fpsBadgeElement;
     this.fpsValEl = fpsBadgeElement ? fpsBadgeElement.querySelector(".fps-val") : null;
+    this.streamProfile = "sub"; // Inicia por padrão no substream leve para a grade 2x2
 
     this.pc = null;
     this.inboundStream = null;
@@ -483,7 +484,8 @@ class WHEPPlayer {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const resp = await fetch(`/api/whep/${this.cameraId}`, {
+      const whepUrl = `/api/whep/${this.cameraId}?stream=${this.streamProfile || "sub"}`;
+      const resp = await fetch(whepUrl, {
         method: "POST",
         headers: { "Content-Type": "application/sdp" },
         body: finalOfferSDP,
@@ -507,6 +509,20 @@ class WHEPPlayer {
       this.updateStatus("SEM SINAL", "Reconectando...", "offline");
       this.scheduleReconnect();
     }
+  }
+
+  /**
+   * Altera dinamicamente o perfil de transmissão (substream para grade ou mainstream para tela cheia)
+   */
+  setProfile(newProfile) {
+    if (this.streamProfile === newProfile) return;
+    this.streamProfile = newProfile;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.isConnecting = false;
+    this.connect();
   }
 
   updateStatus(badgeText, overlayMsg, stateClass) {
@@ -606,7 +622,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   requestTVWakeLock();
 
-  // Controle de Tela Cheia (F11, duplo clique ou botão dedicado)
+  // Controle de Tela Cheia do Navegador (botão dedicado)
   const btnFullscreen = document.getElementById("btn-fullscreen");
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -620,9 +636,89 @@ document.addEventListener("DOMContentLoaded", () => {
     btnFullscreen.addEventListener("click", toggleFullscreen);
   }
 
+  // Gerenciador de Tela Cheia Individual por Câmera (Substream na grade ➔ Mainstream em tela cheia)
+  let activeFullscreenCard = null;
+
+  const exitCameraFullscreen = () => {
+    if (!activeFullscreenCard) return;
+    const card = activeFullscreenCard;
+    const camId = card.getAttribute("data-camera-id");
+    card.classList.remove("camera-fullscreen-active");
+
+    const closeBtn = card.querySelector(".cam-fullscreen-close-btn");
+    if (closeBtn) closeBtn.remove();
+
+    activeFullscreenCard = null;
+
+    // Retorna a câmera para o perfil de SUBSTREAM leve na grade 2x2
+    if (camId && window.argusPlayers && window.argusPlayers[camId]) {
+      window.argusPlayers[camId].setProfile("sub");
+    }
+  };
+
+  const enterCameraFullscreen = (card) => {
+    if (activeFullscreenCard === card) {
+      exitCameraFullscreen();
+      return;
+    }
+    if (activeFullscreenCard) {
+      exitCameraFullscreen();
+    }
+
+    const camId = card.getAttribute("data-camera-id");
+    card.classList.add("camera-fullscreen-active");
+    activeFullscreenCard = card;
+
+    // Cria botão discreto para fechar tela cheia
+    let closeBtn = card.querySelector(".cam-fullscreen-close-btn");
+    if (!closeBtn) {
+      closeBtn = document.createElement("button");
+      closeBtn.className = "cam-fullscreen-close-btn";
+      closeBtn.setAttribute("type", "button");
+      closeBtn.innerHTML = `✕ FECHAR (ESC)`;
+      closeBtn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        exitCameraFullscreen();
+      });
+      card.appendChild(closeBtn);
+    }
+
+    // Chaveia o player desta câmera imediatamente para o MAINSTREAM em alta resolução
+    if (camId && window.argusPlayers && window.argusPlayers[camId]) {
+      window.argusPlayers[camId].setProfile("main");
+    }
+  };
+
+  // Clique duplo sobre uma câmera maximiza ou restaura
+  cards.forEach((card) => {
+    card.setAttribute("tabindex", "0");
+    card.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      enterCameraFullscreen(card);
+    });
+  });
+
+  // Duplo clique fora das câmeras (ex: no HUD) alterna fullscreen geral da janela do navegador
   document.addEventListener("dblclick", (e) => {
-    if (e.target.tagName !== "BUTTON") {
+    if (!e.target.closest(".camera-card") && e.target.tagName !== "BUTTON") {
       toggleFullscreen();
+    }
+  });
+
+  // Atalhos de teclado e controle remoto (Escape / Back fecha a câmera individual)
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" || e.key === "Backspace" || e.key === "BrowserBack") {
+      if (activeFullscreenCard) {
+        e.preventDefault();
+        exitCameraFullscreen();
+      }
+    } else if (e.key === "Enter" || e.key === " ") {
+      // Se um card de câmera estiver com foco (D-Pad do controle remoto)
+      const focusedCard = document.activeElement ? document.activeElement.closest(".camera-card") : null;
+      if (focusedCard) {
+        e.preventDefault();
+        enterCameraFullscreen(focusedCard);
+      }
     }
   });
 

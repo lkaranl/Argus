@@ -10,6 +10,7 @@ argus
 .env
 *.local
 dados_solar.json
+data/
 
 # Sistema operacional
 .DS_Store

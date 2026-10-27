@@ -10,16 +10,20 @@ server:
 cameras:
   - id: "cam_frente"
     name: "Câmera 01 — Portão"
-    # Aceita interpolação de variáveis de ambiente definidas no .env ou sistema
+    # Mainstream em alta resolução (exibido quando a câmera é maximizada em tela cheia)
     rtsp_url: "${CAM_1_RTSP}"
+    # Substream leve de baixa resolução (exibido na grade 2x2 para economizar CPU do Raspberry Pi)
+    substream_url: "${CAM_1_SUBSTREAM}"
 
   - id: "cam_garagem"
     name: "Câmera 02 — Garagem"
     rtsp_url: "${CAM_2_RTSP}"
+    substream_url: "${CAM_2_SUBSTREAM}"
 
   - id: "cam_fundos"
     name: "Câmera 03 — Área do Fundo"
     rtsp_url: "${CAM_3_RTSP}"
+    substream_url: "${CAM_3_SUBSTREAM}"
 
 # Usina Solar Fotovoltaica (Huawei FusionSolar)
 solar:

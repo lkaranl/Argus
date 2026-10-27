@@ -71,6 +71,75 @@ body.fullscreen-active {
   position: relative;
 }
 
+.camera-card {
+  cursor: pointer;
+  user-select: none;
+}
+
+.camera-card:focus-visible {
+  outline: 2px solid var(--accent-emerald);
+  outline-offset: 2px;
+}
+
+/* Estado Maximizado / Tela Cheia (Comutado dinamicamente para Mainstream) */
+.camera-card.camera-fullscreen-active {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background-color: #000000 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  contain: strict;
+  transform: translate3d(0, 0, 0);
+}
+
+.camera-card.camera-fullscreen-active .video-container {
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+.camera-card.camera-fullscreen-active .video-container video {
+  width: 100vw !important;
+  height: 100vh !important;
+  object-fit: contain;
+}
+
+.cam-fullscreen-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 10000;
+  background: rgba(10, 15, 24, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-family: var(--font-main);
+  font-size: clamp(0.72rem, 1.4vh, 0.85rem);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s, transform 0.1s;
+}
+
+.cam-fullscreen-close-btn:hover {
+  background-color: rgba(255, 82, 82, 0.4);
+  border-color: rgba(255, 82, 82, 0.8);
+  color: #ffcdd2;
+}
+
+.cam-fullscreen-close-btn:active {
+  transform: scale(0.97);
+}
+
 /* ------------------------------------------------------------------------------
    CÂMERAS CFTV
    ------------------------------------------------------------------------------ */

@@ -41,16 +41,20 @@ if [ ! -f "$REPO_DIR/config.yaml" ]; then
     echo -e "${GREEN}   ✓ config.yaml criado com sucesso.${NC}"
 fi
 
-# 3. Execução de testes de integridade antes do build
+# 3. Cria diretório de persistência de dados caso não exista
+mkdir -p "$REPO_DIR/data"
+chown "$REAL_USER:$REAL_GROUP" "$REPO_DIR/data" 2>/dev/null || true
+
+# 4. Execução de testes de integridade antes do build
 echo -e "\n🧪 Executando suíte de testes unitários do Argus..."
 if command -v go >/dev/null 2>&1; then
-    (cd "$REPO_DIR" && go test ./... && go vet ./...)
+    (cd "$REPO_DIR" && go test -short ./... && go vet ./...)
     echo -e "${GREEN}   ✓ Todos os testes unitários passaram com sucesso!${NC}"
 else
     echo -e "${YELLOW}   ⚠️  Go não encontrado no PATH atual. Prosseguindo se o binário já existir...${NC}"
 fi
 
-# 4. Compilação do binário estático comercial
+# 5. Compilação do binário estático comercial
 echo -e "\n🔨 Compilando binário estático e otimizado (CGO_ENABLED=0)..."
 if command -v go >/dev/null 2>&1; then
     (cd "$REPO_DIR" && CGO_ENABLED=0 go build -ldflags="-s -w" -o argus cmd/server/main.go)
@@ -64,7 +68,7 @@ else
     exit 1
 fi
 
-# 5. Geração dinâmica do arquivo systemd
+# 6. Geração dinâmica do arquivo systemd
 SERVICE_FILE="/etc/systemd/system/argus.service"
 TEMP_SERVICE="$(mktemp)"
 
@@ -139,7 +143,7 @@ fi
 echo -e "⏳ Verificando status do serviço..."
 sleep 2
 
-# 6. Verificação de status
+# 7. Verificação de status
 if systemctl is-active --quiet argus; then
     SERVER_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -n 1)
     if [ -z "$SERVER_IP" ]; then

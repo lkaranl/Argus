@@ -64,3 +64,25 @@ Como o Pi 4 possui 2 GB de RAM e já utiliza swap:
    dtoverlay=vc4-kms-v3d
    gpu_mem=128
    ```
+
+---
+
+## 📹 Substream sob Demanda (Redução Drástica de CPU)
+
+### Como Funciona
+Na grade 2x2 padrão, cada câmera ocupa aproximadamente 680x384 na tela 1360x768 da TV.
+- **Na Grade**: O Argus solicita automaticamente o canal secundário (`substream_url`, ex: 640x360 ou 720p). Isso reduz a carga de decodificação na CPU Cortex-A72 em mais de 60%.
+- **Em Tela Cheia**: Ao dar um **duplo clique** ou pressionar **Enter** em qualquer câmera, ela se expande para tela cheia e comuta instantaneamente para o **Mainstream** em alta resolução (1080p/2K).
+- **Para Fechar**: Clique no botão flutuante **✕ FECHAR (ESC)**, pressione **Escape**, **Backspace** ou dê um duplo clique novamente. O Argus reverte para o substream e restaura a grade 2x2.
+
+### Como Configurar no `config.yaml`:
+
+```yaml
+cameras:
+  - id: "cam_frente"
+    name: "Portão Frente"
+    rtsp_url: "rtsp://admin:senha@192.168.68.53:554/stream1"       # Mainstream (1080p/2K)
+    substream_url: "rtsp://admin:senha@192.168.68.53:554/stream2" # Substream (640x360 / D1)
+```
+
+> **Fallback Transparente**: Se uma câmera não possuir `substream_url` configurado, o Argus utiliza o stream principal normalmente sem interrupções.

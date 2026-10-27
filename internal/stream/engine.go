@@ -111,6 +111,9 @@ type cameraStream struct {
 	id             string
 	name           string
 	rtspURL        string
+	isSubstream    bool
+	parentID       string
+	hasSubstream   bool
 	trackH264      *webrtc.TrackLocalStaticRTP
 	trackH265      *webrtc.TrackLocalStaticRTP
 	sessions       map[string]*webrtc.PeerConnection
@@ -244,21 +247,54 @@ func NewEngine(cameras []config.CameraConfig) *Engine {
 			continue
 		}
 
+		hasSub := cam.SubstreamURL != "" && cam.SubstreamURL != cam.RTSPURL
+
 		ctx, cancel := context.WithCancel(context.Background())
 		cs := &cameraStream{
-			id:        cam.ID,
-			name:      cam.Name,
-			rtspURL:   cam.RTSPURL,
-			trackH264: trackH264,
-			trackH265: trackH265,
-			sessions:  make(map[string]*webrtc.PeerConnection),
-			cancel:    cancel,
+			id:           cam.ID,
+			name:         cam.Name,
+			rtspURL:      cam.RTSPURL,
+			trackH264:    trackH264,
+			trackH265:    trackH265,
+			sessions:     make(map[string]*webrtc.PeerConnection),
+			cancel:       cancel,
+			hasSubstream: hasSub,
 		}
 
 		engine.cameras[cam.ID] = cs
 
 		// Inicia rotina de ingestão RTSP ativa com zero-copy passthrough
 		go engine.startRTSPIngest(ctx, cs)
+
+		// Se houver substream configurado, instancia e inicia worker dedicado para o canal secundário
+		if hasSub {
+			subH264, err1 := webrtc.NewTrackLocalStaticRTP(
+				webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000},
+				"video",
+				"stream-"+cam.ID+"-sub-h264",
+			)
+			subH265, err2 := webrtc.NewTrackLocalStaticRTP(
+				webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH265, ClockRate: 90000},
+				"video",
+				"stream-"+cam.ID+"-sub-h265",
+			)
+			if err1 == nil && err2 == nil {
+				subCtx, subCancel := context.WithCancel(context.Background())
+				subCS := &cameraStream{
+					id:          cam.ID + "_sub",
+					name:        cam.Name + " (Substream)",
+					rtspURL:     cam.SubstreamURL,
+					trackH264:   subH264,
+					trackH265:   subH265,
+					sessions:    make(map[string]*webrtc.PeerConnection),
+					cancel:      subCancel,
+					isSubstream: true,
+					parentID:    cam.ID,
+				}
+				engine.cameras[cam.ID+"_sub"] = subCS
+				go engine.startRTSPIngest(subCtx, subCS)
+			}
+		}
 	}
 
 	return engine
@@ -291,6 +327,11 @@ func (e *Engine) ListCameras() []map[string]interface{} {
 
 	result := make([]map[string]interface{}, 0, len(e.cameras))
 	for _, cam := range e.cameras {
+		// Não duplica streams secundários na listagem principal
+		if cam.isSubstream {
+			continue
+		}
+
 		cam.sessMu.RLock()
 		sessCount := len(cam.sessions)
 		cam.sessMu.RUnlock()
@@ -304,18 +345,27 @@ func (e *Engine) ListCameras() []map[string]interface{} {
 		}
 		lastErr, codec := cam.getState()
 
+		subConnected := false
+		if cam.hasSubstream {
+			if sub, ok := e.cameras[cam.id+"_sub"]; ok {
+				subConnected = sub.connected.Load()
+			}
+		}
+
 		result = append(result, map[string]interface{}{
-			"id":               cam.id,
-			"name":             cam.name,
-			"connected":        cam.connected.Load(),
-			"viewers":          sessCount,
-			"packets_received": pktCount,
-			"frames_received":  frmCount,
-			"ingest_fps":       cam.ingestFPS.Load(),
-			"last_packet":      lastPacketStr,
-			"last_error":       lastErr,
-			"codec":            codec,
-			"url":              maskURL(cam.rtspURL),
+			"id":                  cam.id,
+			"name":                cam.name,
+			"connected":           cam.connected.Load(),
+			"has_substream":       cam.hasSubstream,
+			"substream_connected": subConnected,
+			"viewers":             sessCount,
+			"packets_received":    pktCount,
+			"frames_received":     frmCount,
+			"ingest_fps":          cam.ingestFPS.Load(),
+			"last_packet":         lastPacketStr,
+			"last_error":          lastErr,
+			"codec":               codec,
+			"url":                 maskURL(cam.rtspURL),
 		})
 	}
 	return result

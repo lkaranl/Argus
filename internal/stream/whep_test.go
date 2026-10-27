@@ -131,4 +131,48 @@ func TestWHEPHandler(t *testing.T) {
 	if rec405.Code != http.StatusMethodNotAllowed {
 		t.Errorf("Esperava 405 para método PUT, obteve %d", rec405.Code)
 	}
+
+	// 4. Teste de Substream sob Demanda e Fallback gracioso
+	camsWithSub := []config.CameraConfig{
+		{
+			ID:           "cam_garagem",
+			Name:         "Câmera Garagem",
+			RTSPURL:      "rtsp://localhost:8554/cam_garagem_main",
+			SubstreamURL: "rtsp://localhost:8554/cam_garagem_sub",
+		},
+	}
+	engineWithSub := NewEngine(camsWithSub)
+
+	// 4a. Solicitar ?stream=sub para câmera com substream configurado
+	recSub := httptest.NewRecorder()
+	reqSub := httptest.NewRequest("POST", "/api/whep/cam_garagem?stream=sub", bytes.NewBufferString(offer.SDP))
+	reqSub.Header.Set("Content-Type", "application/sdp")
+	engineWithSub.ServeWHEP(recSub, reqSub, "cam_garagem")
+
+	if recSub.Code != http.StatusCreated && recSub.Code != http.StatusOK {
+		t.Fatalf("Esperava 201/200 para substream, obteve %d: %s", recSub.Code, recSub.Body.String())
+	}
+	if loc := recSub.Header().Get("Location"); !strings.Contains(loc, "cam_garagem_sub") {
+		t.Errorf("Esperava Location contendo 'cam_garagem_sub', obteve '%s'", loc)
+	}
+
+	// 4b. Solicitar ?stream=main para câmera com substream configurado
+	recMain := httptest.NewRecorder()
+	reqMain := httptest.NewRequest("POST", "/api/whep/cam_garagem?stream=main", bytes.NewBufferString(offer.SDP))
+	reqMain.Header.Set("Content-Type", "application/sdp")
+	engineWithSub.ServeWHEP(recMain, reqMain, "cam_garagem")
+
+	if recMain.Code != http.StatusCreated && recMain.Code != http.StatusOK {
+		t.Fatalf("Esperava 201/200 para mainstream, obteve %d: %s", recMain.Code, recMain.Body.String())
+	}
+
+	// 4c. Solicitar ?stream=sub para câmera SEM substream (deve fazer fallback transparente)
+	recFallback := httptest.NewRecorder()
+	reqFallback := httptest.NewRequest("POST", "/api/whep/cam_frente?stream=sub", bytes.NewBufferString(offer.SDP))
+	reqFallback.Header.Set("Content-Type", "application/sdp")
+	engine.ServeWHEP(recFallback, reqFallback, "cam_frente")
+
+	if recFallback.Code != http.StatusCreated && recFallback.Code != http.StatusOK {
+		t.Fatalf("Esperava 201/200 no fallback de substream, obteve %d: %s", recFallback.Code, recFallback.Body.String())
+	}
 }
