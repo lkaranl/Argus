@@ -20,7 +20,7 @@ func generateSessionID() string {
 }
 
 func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
-	client := &http.Client{Timeout: 1500 * time.Millisecond}
+	client := &http.Client{Timeout: 2000 * time.Millisecond}
 	candidates := []string{cameraID}
 	switch cameraID {
 	case "cam_frente":
@@ -32,22 +32,29 @@ func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
 	}
 
 	for _, cand := range candidates {
-		go2rtcURL := fmt.Sprintf("http://127.0.0.1:1984/api/whep?src=%s&media=video", cand)
-		req, err := http.NewRequest(http.MethodPost, go2rtcURL, bytes.NewReader(sdpOffer))
-		if err != nil {
-			continue
+		// go2rtc suporta tanto a API WebRTC padrão (/api/webrtc) quanto WHEP (/api/whep)
+		urls := []string{
+			fmt.Sprintf("http://127.0.0.1:1984/api/webrtc?src=%s", cand),
+			fmt.Sprintf("http://127.0.0.1:1984/api/whep?src=%s&media=video", cand),
 		}
-		req.Header.Set("Content-Type", "application/sdp")
-		resp, err := client.Do(req)
-		if err == nil {
-			if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-				ans, _ := io.ReadAll(resp.Body)
-				_ = resp.Body.Close()
-				if len(ans) > 0 {
-					return ans, true
-				}
+
+		for _, go2rtcURL := range urls {
+			req, err := http.NewRequest(http.MethodPost, go2rtcURL, bytes.NewReader(sdpOffer))
+			if err != nil {
+				continue
 			}
-			_ = resp.Body.Close()
+			req.Header.Set("Content-Type", "application/sdp")
+			resp, err := client.Do(req)
+			if err == nil {
+				if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+					ans, _ := io.ReadAll(resp.Body)
+					_ = resp.Body.Close()
+					if len(ans) > 0 {
+						return ans, true
+					}
+				}
+				_ = resp.Body.Close()
+			}
 		}
 	}
 	return nil, false
@@ -96,17 +103,21 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 			return
 		}
 
-		// Se o stream nativo ainda não estiver conectado, tenta negociar com go2rtc se estiver ativo
-		if !cam.connected.Load() {
+		offerSDP := string(body)
+		clientSupportsH265 := strings.Contains(strings.ToLower(offerSDP), "h265")
+
+		// Se o stream nativo ainda não estiver conectado OU se a câmera transmitir em H.265
+		// e o navegador do cliente (ex: Chromium / Firefox no Linux/Raspberry Pi) NÃO suportar H.265,
+		// delega automaticamente para o gateway go2rtc local que possui fallback de transcodificação FFmpeg para H.264
+		if !cam.connected.Load() || (cam.isH265.Load() && !clientSupportsH265) {
 			if ans, ok := tryGo2RTC(targetID, body); ok {
 				w.Header().Set("Content-Type", "application/sdp")
+				w.Header().Set("Location", fmt.Sprintf("/api/whep/%s/session/%s", targetID, generateSessionID()))
 				w.WriteHeader(http.StatusCreated)
 				_, _ = w.Write(ans)
 				return
 			}
 		}
-
-		offerSDP := string(body)
 
 		// Cria uma nova conexão PeerConnection
 		pc, err := e.api.NewPeerConnection(webrtc.Configuration{
