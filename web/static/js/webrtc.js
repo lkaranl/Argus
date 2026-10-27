@@ -1,8 +1,107 @@
 /**
- * ARGUS CCTV COMMAND HUB — Gerenciador de Vídeo WebRTC via WHEP
- * Conexão de baixa latência (<200ms) com autoplay forçado para Smart TVs (sem mouse/interação)
- * e auto-reconnect silencioso sem recarga de página.
+ * MODELO MATEMÁTICO DE ESTABILIZAÇÃO DE FLUIDEZ (Jacobson-Karels Adaptativo)
+ * 
+ * Problema: Redes Wi-Fi residenciais (especialmente 2.4 GHz em câmeras externas)
+ * sofrem com flutuações de tempo de trânsito dos pacotes (jitter) e retransmissões NACK.
+ * O WebRTC padrão tenta operar com jitter buffer tendendo a 0ms, causando "underrun"
+ * e micro-congelamentos visuais toda vez que um pacote atrasa 40ms.
+ * 
+ * Solução Matemática:
+ * 1. Estimador de Jitter Médio Suavizado (Filtro Exponencial Jacobson-Karels):
+ *    J_smooth(t) = (1 - α) * J_smooth(t-1) + α * J_sample(t),  onde α = 0.125 (1/8)
+ * 2. Estimador de Dispersão / Variância Absoluta Média (MAD):
+ *    J_dev(t) = (1 - β) * J_dev(t-1) + β * |J_sample(t) - J_smooth(t)|,  onde β = 0.25 (1/4)
+ * 3. Dimensionamento Ótimo do Buffer de Playout:
+ *    Target(t) = BaseDelay + J_smooth(t) + K * J_dev(t)
+ *    onde K = 4.0 (garante cobertura de 99.7% das flutuações de cauda),
+ *    e BaseDelay = 0.10s (tempo de 1 frame a 10 FPS).
+ * 4. Histerese Assimétrica com Zona Morta (Deadband):
+ *    - Se Target > BufferAtual + 25ms: Subida imediata (Fast Attack) para blindar o decodificador.
+ *    - Se Target < BufferAtual - 40ms: Descida amortecida (Slow Decay, 0.85/0.15) após 3.5s de calma.
+ *    - Diferenças < 25ms são ignoradas para evitar que o relógio de reprodução sofra micro-pitching.
+ * 5. Injeção Bi-direcional na API de Renderização:
+ *    - RTCRtpReceiver.playoutDelayHint (segundos)
+ *    - RTCRtpReceiver.jitterBufferTarget (milissegundos)
  */
+class AdaptiveJitterController {
+  constructor(receiverProvider) {
+    this.receiverProvider = receiverProvider;
+    this.alpha = 0.125;
+    this.beta = 0.25;
+    this.kMultiplier = 4.0;
+    this.baseDelaySec = 0.10;
+    this.minDelaySec = 0.15; // Mínimo de 150ms
+    this.maxDelaySec = 0.40; // Máximo de 400ms (imperceptível ao olho)
+
+    this.smoothedJitter = 0.02;
+    this.jitterDev = 0.01;
+    this.appliedDelaySec = 0.20; // 200ms inicial padrão
+    this.lastAdjustTime = 0;
+  }
+
+  reset() {
+    this.smoothedJitter = 0.02;
+    this.jitterDev = 0.01;
+    this.appliedDelaySec = 0.20;
+    this.lastAdjustTime = performance.now();
+  }
+
+  applyInitial(receiver) {
+    if (!receiver) return;
+    this.apply(this.appliedDelaySec, receiver);
+  }
+
+  update(jitterSec, underrunDetected = false) {
+    if (typeof jitterSec !== "number" || isNaN(jitterSec) || jitterSec < 0) return;
+
+    // Atualização matemática Jacobson-Karels
+    const err = Math.abs(jitterSec - this.smoothedJitter);
+    this.smoothedJitter = (1 - this.alpha) * this.smoothedJitter + this.alpha * jitterSec;
+    this.jitterDev = (1 - this.beta) * this.jitterDev + this.beta * err;
+
+    let target = this.baseDelaySec + this.smoothedJitter + (this.kMultiplier * this.jitterDev);
+
+    if (underrunDetected) {
+      target += 0.06; // Incremento defensivo de +60ms se houve perda de pacote ou frame drop
+    }
+
+    const clampedTarget = Math.min(Math.max(target, this.minDelaySec), this.maxDelaySec);
+    const diff = clampedTarget - this.appliedDelaySec;
+    const now = performance.now();
+
+    if (diff > 0.025) {
+      // Fast Attack: eleva o buffer preventivamente
+      this.appliedDelaySec = clampedTarget;
+      this.lastAdjustTime = now;
+      this.apply(this.appliedDelaySec);
+    } else if (diff < -0.040 && (now - this.lastAdjustTime > 3500)) {
+      // Slow Decay: reduz gradualmente
+      this.appliedDelaySec = this.appliedDelaySec * 0.85 + clampedTarget * 0.15;
+      this.lastAdjustTime = now;
+      this.apply(this.appliedDelaySec);
+    }
+  }
+
+  apply(sec, receiverOverride = null) {
+    const receiver = receiverOverride || (typeof this.receiverProvider === "function" ? this.receiverProvider() : this.receiverProvider);
+    if (!receiver) return;
+
+    const roundedSec = Math.round(sec * 1000) / 1000;
+    const roundedMs = Math.round(sec * 1000);
+
+    try {
+      if ("playoutDelayHint" in receiver) {
+        receiver.playoutDelayHint = roundedSec;
+      }
+    } catch (e) {}
+
+    try {
+      if ("jitterBufferTarget" in receiver) {
+        receiver.jitterBufferTarget = roundedMs;
+      }
+    } catch (e) {}
+  }
+}
 
 class WHEPPlayer {
   constructor(cameraId, videoElement, badgeElement, overlayElement, statusTextElement, fpsBadgeElement) {
@@ -16,6 +115,7 @@ class WHEPPlayer {
     this.streamProfile = "sub"; // Inicia por padrão no substream leve para a grade 2x2
 
     this.pc = null;
+    this.receiver = null;
     this.inboundStream = null;
     this.inboundTrack = null;
     this.reconnectTimer = null;
@@ -31,6 +131,11 @@ class WHEPPlayer {
     this.lastCurrentTime = -1;
     this.lastDecodedFrames = -1;
     this.lastFrameProgressAt = 0;
+
+    // Métricas para feedback defensivo do jitter buffer
+    this.prevFramesDropped = 0;
+    this.prevPacketsLost = 0;
+    this.jitterController = new AdaptiveJitterController(() => this.receiver);
 
     // Contadores para cálculo de FPS a cada 1s
     this.rvfcFrames = 0;
@@ -270,6 +375,25 @@ class WHEPPlayer {
                 }
                 this.prevRtcDecodedFrames = report.framesDecoded;
               }
+
+              // Detecção de anomalias de entrega (frames descartados / pacotes perdidos)
+              let underrunDetected = false;
+              if (typeof report.framesDropped === "number") {
+                if (this.prevFramesDropped !== undefined && report.framesDropped > this.prevFramesDropped) {
+                  underrunDetected = true;
+                }
+                this.prevFramesDropped = report.framesDropped;
+              }
+              if (typeof report.packetsLost === "number") {
+                if (this.prevPacketsLost !== undefined && report.packetsLost > this.prevPacketsLost) {
+                  underrunDetected = true;
+                }
+                this.prevPacketsLost = report.packetsLost;
+              }
+
+              if (typeof report.jitter === "number") {
+                this.jitterController.update(report.jitter, underrunDetected);
+              }
             }
           });
         } catch (e) {}
@@ -286,14 +410,24 @@ class WHEPPlayer {
         }
       }
 
-      let fps = Math.max(rvfcFps, qualityFps, rtcFps);
-
-      if (rtcFps === 0 && (!this.video || this.video.paused || !this.video.srcObject)) {
-        fps = 0;
+      // Determina o FPS bruto medido: prioriza a taxa nativa de quadros decodificados (rtcFps / qualityFps)
+      let rawFps = 0;
+      if (rtcFps > 0) {
+        rawFps = rtcFps;
+      } else if (qualityFps > 0) {
+        rawFps = qualityFps;
+      } else if (rvfcFps > 0) {
+        rawFps = rvfcFps;
       }
 
-      this.currentFps = fps;
-      this.renderFpsBadge(fps);
+      if (rawFps === 0 && (!this.video || this.video.paused || !this.video.srcObject)) {
+        this.currentFps = 0;
+      } else if (rawFps > 0) {
+        // Suavização exponencial suave para manter o número estável no HUD
+        this.currentFps = this.currentFps > 0 ? Math.round(this.currentFps * 0.3 + rawFps * 0.7) : rawFps;
+      }
+
+      this.renderFpsBadge(this.currentFps);
     }, 1000);
   }
 
@@ -345,10 +479,11 @@ class WHEPPlayer {
 
       if (isPcConnected && this.connectedAt > 0) {
         const now = Date.now();
-        // Dá até 25s para o primeiro frame da transcodificação H.264 chegar e decodificar
-        const noFramesYet = !this.isVideoRendering() && this.prevRtcDecodedFrames === 0 && now - this.connectedAt > 25000;
-        const stalledByFrames = this.lastFrameProgressAt > 0 && now - this.lastFrameProgressAt > 18000;
-        const stalledByTime = this.lastFrameProgressAt === 0 && this.lastTimeUpdate > 0 && now - this.lastTimeUpdate > 18000;
+        // Dá até 35s para o primeiro frame da transcodificação H.264 chegar e decodificar (ideal para clientes ARM como Raspberry Pi)
+        const noFramesYet = !this.isVideoRendering() && this.prevRtcDecodedFrames === 0 && now - this.connectedAt > 35000;
+        // Evita reconectar se o stream sofrer oscilações momentâneas de sinal na câmera Wi-Fi
+        const stalledByFrames = this.lastFrameProgressAt > 0 && now - this.lastFrameProgressAt > 30000;
+        const stalledByTime = this.lastFrameProgressAt === 0 && this.lastTimeUpdate > 0 && now - this.lastTimeUpdate > 30000;
 
         if (noFramesYet || stalledByFrames || stalledByTime) {
           this.connectedAt = now;
@@ -357,7 +492,7 @@ class WHEPPlayer {
           this.connect();
         }
       }
-    }, 1200);
+    }, 1500);
   }
 
   async connect() {
@@ -368,7 +503,10 @@ class WHEPPlayer {
     this.lastDecodedFrames = -1;
     this.prevTotalFrames = 0;
     this.prevRtcDecodedFrames = 0;
+    this.prevFramesDropped = 0;
+    this.prevPacketsLost = 0;
     this.lastFrameProgressAt = 0;
+    this.jitterController.reset();
 
     this.updateStatus("CONECTANDO", "Negociando WHEP...", "connecting");
 
@@ -410,6 +548,13 @@ class WHEPPlayer {
           event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
         this.inboundTrack = event.track;
         this.inboundStream = inboundStream;
+        this.receiver = event.receiver;
+
+        // Inicializa o buffer adaptativo no RTCRtpReceiver nativo
+        if (event.receiver) {
+          this.jitterController.applyInitial(event.receiver);
+        }
+
         this.enforceMutedState();
         this.video.srcObject = inboundStream;
 

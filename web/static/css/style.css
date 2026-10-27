@@ -226,6 +226,8 @@ body.fullscreen-active {
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
   will-change: transform;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: optimizeSpeed;
 }
 
 .video-container .video-canvas {
@@ -746,233 +748,197 @@ body.fullscreen-active {
   border-color: rgba(245, 197, 66, 0.4);
 }
 
-.solar-minimal-header {
+/* -------------------------------------------------------------------------
+   TESLA SOLAR COMMAND — PAINEL DE ENERGIA SOLAR (2/3 ESQUERDA)
+   ------------------------------------------------------------------------- */
+.solar-card-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  justify-content: space-between;
+  width: 100%;
   flex-shrink: 0;
+  padding: 0 2px;
 }
 
-.solar-minimal-dot {
+.solar-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.solar-live-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(245, 197, 66, 0.55);
-  box-shadow: 0 0 6px rgba(245, 197, 66, 0.5);
+  background-color: #00E676;
+  box-shadow: 0 0 8px #00E676;
+  animation: pulseDot 2s infinite ease-in-out;
 }
 
-.solar-minimal-sun {
+.solar-sun-icon {
   font-size: 0.85rem;
   line-height: 1;
-  text-shadow: 0 0 6px rgba(245, 197, 66, 0.7);
+  text-shadow: 0 0 8px rgba(245, 197, 66, 0.7);
 }
 
-.solar-minimal-title {
+.solar-card-title {
   font-family: var(--font-main);
-  font-size: clamp(0.62rem, 1.25vh, 0.76rem);
-  font-weight: 600;
-  letter-spacing: 1.8px;
-  color: rgba(255, 255, 255, 0.72);
+  font-size: clamp(0.62rem, 1.2vh, 0.76rem);
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  color: rgba(255, 255, 255, 0.85);
   text-transform: uppercase;
 }
 
-.solar-minimal-hero {
+.solar-header-right {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  gap: 1px;
 }
 
-.solar-minimal-power-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px;
-}
-
-.solar-minimal-power-val {
-  font-family: var(--font-main);
-  font-size: clamp(1.75rem, 4.0vh, 2.5rem);
-  font-weight: 700;
-  line-height: 0.95;
-  color: #F5C542;
-  letter-spacing: -1px;
-  font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 20px rgba(245, 197, 66, 0.35);
-}
-
-.solar-minimal-power-unit {
-  font-family: var(--font-main);
-  font-size: clamp(0.72rem, 1.5vh, 0.92rem);
-  font-weight: 700;
-  color: #D4A72C;
-}
-
-.solar-minimal-power-sub {
-  font-family: var(--font-main);
-  font-size: clamp(0.46rem, 0.9vh, 0.56rem);
-  font-weight: 600;
-  letter-spacing: 1.4px;
-  color: rgba(255, 255, 255, 0.45);
-  text-transform: uppercase;
-}
-
-/* Gráfico de Barras: Geração dos Últimos 7 Dias */
-.solar-week-chart {
-  width: 100%;
-  flex: 2 1 0;
-  min-height: 60px;
-  max-height: 110px;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-  align-items: stretch;
-  background: transparent;
-  border: none;
-  padding: 2px 0;
-  box-sizing: border-box;
-}
-
-.week-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  gap: 3px;
-  box-sizing: border-box;
-  background: transparent;
-  border: none;
-  transition: all 0.25s ease;
-}
-
-.week-val {
+.solar-peak-badge {
   font-family: var(--font-mono);
-  font-size: clamp(0.52rem, 1.1vh, 0.68rem);
-  font-weight: 600;
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.5);
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
+  font-size: clamp(0.56rem, 1.05vh, 0.68rem);
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  color: rgba(245, 197, 66, 0.9);
+  background: rgba(245, 197, 66, 0.08);
+  border: 1px solid rgba(245, 197, 66, 0.22);
+  padding: 2px 7px;
+  border-radius: 6px;
 }
 
-.week-bar-track {
-  width: 100%;
-  flex: 1 1 0;
-  min-height: 32px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: transparent;
-  box-sizing: border-box;
+.solar-peak-badge b {
+  color: #FFF275;
+  font-weight: 700;
 }
 
-.week-bar {
-  width: 8px;
-  min-height: 4px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
-  transition: height 0.4s ease-out;
-}
-
-.week-day {
-  font-family: var(--font-main);
-  font-size: clamp(0.48rem, 1.0vh, 0.62rem);
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.45);
-  flex-shrink: 0;
-  text-transform: uppercase;
-}
-
-.week-col.week-empty {
-  opacity: 0.35;
-}
-
-.week-col.week-empty .week-val {
-  color: rgba(255, 255, 255, 0.22);
-}
-
-.week-col.week-empty .week-bar {
-  height: 4px !important;
-  background: rgba(255, 255, 255, 0.10);
-}
-
-/* HOJE: Coluna de Destaque Dourado */
-.week-col.week-today {
-  background: transparent;
-}
-
-.week-col.week-today .week-bar {
-  width: 10px;
-  border-radius: 5px;
-  background: linear-gradient(180deg, #FFF099 0%, #F5C542 55%, #E0A810 100%);
-  box-shadow: 0 0 14px rgba(245, 197, 66, 0.7), 0 0 3px rgba(255, 240, 153, 0.8);
-}
-
-.week-col.week-today .week-val {
-  font-size: clamp(0.66rem, 1.45vh, 0.88rem);
-  font-weight: 800;
-  color: #FFF2A8;
-  text-shadow: 0 0 10px rgba(245, 197, 66, 0.6);
-}
-
-.week-col.week-today .week-day {
-  font-size: clamp(0.54rem, 1.15vh, 0.70rem);
-  font-weight: 800;
-  color: #F5C542;
-  letter-spacing: 1px;
-}
-
-/* Rodapé: 3 Cards (HOJE KWH | MÊS KWH | ANO MWH) */
-.solar-minimal-pills {
+/* Faixa de KPIs (Grid 4 Colunas Equilibradas) */
+.solar-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   width: 100%;
   flex-shrink: 0;
 }
 
-.solar-kpi-pill {
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  padding: 5px 6px;
+.solar-kpi-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-sizing: border-box;
 }
 
-.solar-kpi-val {
-  font-family: var(--font-main);
-  font-size: clamp(0.82rem, 1.8vh, 1.08rem);
-  font-weight: 700;
-  line-height: 1.1;
-  color: #ffffff;
-  font-variant-numeric: tabular-nums;
+.solar-kpi-item.kpi-agora {
+  background: rgba(245, 197, 66, 0.06);
+  border-color: rgba(245, 197, 66, 0.25);
+  box-shadow: 0 0 12px rgba(245, 197, 66, 0.06);
 }
 
 .solar-kpi-lbl {
   font-family: var(--font-main);
-  font-size: clamp(0.44rem, 0.9vh, 0.56rem);
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  color: rgba(255, 255, 255, 0.45);
+  font-size: clamp(0.46rem, 0.85vh, 0.54rem);
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  color: rgba(255, 255, 255, 0.42);
   text-transform: uppercase;
-  white-space: nowrap;
 }
 
-/* Card 1/3: Clima Hoje & Previsão Amanhã */
+.kpi-agora .solar-kpi-lbl {
+  color: #F5C542;
+}
+
+.solar-kpi-val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.solar-kpi-val {
+  font-family: var(--font-main);
+  font-size: clamp(0.88rem, 1.85vh, 1.25rem);
+  font-weight: 700;
+  color: #FFFFFF;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.solar-kpi-val.kpi-val-agora {
+  color: #F5C542;
+  font-size: clamp(1.05rem, 2.2vh, 1.45rem);
+  text-shadow: 0 0 12px rgba(245, 197, 66, 0.35);
+}
+
+.solar-kpi-unit {
+  font-family: var(--font-main);
+  font-size: clamp(0.50rem, 0.95vh, 0.62rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.kpi-agora .solar-kpi-unit {
+  color: #D4A72C;
+}
+
+/* Curva Solar Diária Expansiva */
+.solar-daily-chart-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 5px 8px 3px 8px;
+  box-sizing: border-box;
+}
+
+.solar-chart-stage {
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+}
+
+.solar-curve-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.solar-curve-timeline {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.solar-curve-timeline span {
+  font-family: var(--font-mono);
+  font-size: clamp(0.48rem, 0.95vh, 0.58rem);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.38);
+  letter-spacing: 0.5px;
+}
+
+/* Card 1/3: Clima & Histórico Solar 3 Dias */
 .weather-dual-card {
-  background: radial-gradient(circle at 50% 28%, rgba(0, 210, 255, 0.06) 0%, rgba(4, 5, 8, 0.98) 75%);
+  background: radial-gradient(circle at 50% 20%, rgba(0, 210, 255, 0.05) 0%, rgba(4, 5, 8, 0.98) 75%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.weather-card-header {
+  margin-bottom: 2px;
 }
 
 .weather-live-dot {
@@ -983,151 +949,297 @@ body.fullscreen-active {
   box-shadow: 0 0 6px var(--accent-emerald);
 }
 
-.today-hero-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex: 1 1 0;
-  gap: 2px;
-  min-height: 0;
-  width: 100%;
-}
-
-.today-main-temp-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px;
-}
-
-.today-weather-icon {
-  font-size: clamp(1.4rem, 3.4vh, 2.1rem);
-  line-height: 1;
-  transform: translateY(-2px);
-  text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
-}
-
-.today-temp-now {
-  font-family: var(--font-main);
-  font-size: clamp(1.85rem, 4.6vh, 2.75rem);
-  font-weight: 700;
-  line-height: 0.95;
-  color: #ffffff;
-  letter-spacing: -1px;
-  font-variant-numeric: tabular-nums;
-}
-
-.today-temp-unit {
-  font-family: var(--font-main);
-  font-size: clamp(0.80rem, 1.9vh, 1.10rem);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.today-weather-desc {
-  font-family: var(--font-main);
-  font-size: clamp(0.54rem, 1.15vh, 0.70rem);
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  color: rgba(255, 255, 255, 0.72);
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.today-minmax-pill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-family: var(--font-main);
-  font-size: clamp(0.52rem, 1.1vh, 0.66rem);
-  color: rgba(255, 255, 255, 0.5);
-  margin-top: 1px;
-}
-
-.today-minmax-pill b {
-  color: rgba(255, 255, 255, 0.88);
-  font-weight: 600;
-}
-
-.minmax-dot {
-  opacity: 0.4;
-}
-
-/* Card Escuro Inferior: Dedicado a AMANHÃ */
-.tomorrow-footer-card {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  padding: 5px 8px;
+/* Faixa Superior: Clima Compacto (Hoje + Amanhã) */
+.weather-compact-stage {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  flex-shrink: 0;
-  box-sizing: border-box;
+  gap: 8px;
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 2px 0 4px 0;
 }
 
-.tomorrow-footer-left {
+.weather-today-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.weather-today-icon-temp {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.weather-today-icon {
+  font-size: clamp(1.35rem, 2.9vh, 1.85rem);
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
+}
+
+.weather-today-num-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.weather-today-temp {
+  font-family: var(--font-main);
+  font-size: clamp(1.45rem, 3.2vh, 1.95rem);
+  font-weight: 700;
+  color: #FFFFFF;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-today-unit {
+  font-family: var(--font-main);
+  font-size: clamp(0.65rem, 1.25vh, 0.82rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.weather-today-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  min-width: 0;
   gap: 1px;
+  min-width: 0;
+  flex: 1 1 0;
 }
 
-.tomorrow-badge-lbl {
+.weather-today-desc {
   font-family: var(--font-main);
-  font-size: clamp(0.50rem, 1.0vh, 0.62rem);
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #F5C542;
+  font-size: clamp(0.40rem, 0.82vh, 0.48rem);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: rgba(255, 255, 255, 0.78);
   text-transform: uppercase;
-}
-
-.tomorrow-footer-desc {
-  font-family: var(--font-main);
-  font-size: clamp(0.46rem, 0.9vh, 0.56rem);
-  color: rgba(255, 255, 255, 0.48);
-  white-space: nowrap;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
   max-width: 100%;
 }
 
-.tomorrow-footer-right {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-}
-
-.tomorrow-footer-icon {
-  font-size: clamp(0.90rem, 1.9vh, 1.15rem);
-  line-height: 1;
-}
-
-.tomorrow-footer-temps {
+.weather-today-minmax {
   font-family: var(--font-main);
-  font-size: clamp(0.80rem, 1.75vh, 1.02rem);
-  color: #ffffff;
-  font-variant-numeric: tabular-nums;
+  font-size: clamp(0.44rem, 0.88vh, 0.54rem);
+  color: rgba(255, 255, 255, 0.45);
   white-space: nowrap;
 }
 
-.tomorrow-footer-temps b {
+.weather-today-minmax b {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+}
+
+/* Pill de Amanhã */
+.weather-tomorrow-pill {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 3px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 76px;
+  box-sizing: border-box;
+}
+
+.tomorrow-pill-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 4px;
+}
+
+.tomorrow-pill-tag {
+  font-family: var(--font-main);
+  font-size: clamp(0.42rem, 0.85vh, 0.50rem);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #00E5FF;
+  text-transform: uppercase;
+}
+
+.tomorrow-pill-icon {
+  font-size: clamp(0.75rem, 1.45vh, 0.95rem);
+  line-height: 1;
+}
+
+.tomorrow-pill-temps {
+  font-family: var(--font-main);
+  font-size: clamp(0.74rem, 1.5vh, 0.90rem);
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.tomorrow-pill-temps b {
   font-weight: 700;
 }
 
-.tomorrow-footer-temps small {
-  font-size: 0.8em;
+.tomorrow-pill-temps small {
+  font-size: 0.82em;
+  color: rgba(255, 255, 255, 0.45);
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.48);
 }
+
+.tomorrow-pill-desc {
+  font-family: var(--font-main);
+  font-size: clamp(0.40rem, 0.8vh, 0.48rem);
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 82px;
+}
+
+/* Faixa Inferior: Geração Últimos 3 Dias */
+.solar-recent-history-block {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  padding: 4px 6px 5px 6px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.recent-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 3px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.recent-history-title {
+  font-family: var(--font-main);
+  font-size: clamp(0.44rem, 0.85vh, 0.52rem);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.42);
+  text-transform: uppercase;
+}
+
+.recent-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  width: 100%;
+}
+
+.recent-day-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 3px 5px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2px;
+  box-sizing: border-box;
+}
+
+.recent-day-card.is-today {
+  background: rgba(245, 197, 66, 0.07);
+  border-color: rgba(245, 197, 66, 0.28);
+  box-shadow: 0 0 10px rgba(245, 197, 66, 0.05);
+}
+
+.recent-day-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.recent-day-lbl {
+  font-family: var(--font-main);
+  font-size: clamp(0.44rem, 0.85vh, 0.52rem);
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.is-today .recent-day-lbl {
+  color: #F5C542;
+}
+
+.recent-day-live-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #F5C542;
+  box-shadow: 0 0 5px #F5C542;
+}
+
+.recent-day-val-box {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.recent-day-val {
+  font-family: var(--font-main);
+  font-size: clamp(0.78rem, 1.6vh, 1.02rem);
+  font-weight: 700;
+  color: #FFFFFF;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.is-today .recent-day-val {
+  color: #FFF275;
+  text-shadow: 0 0 8px rgba(245, 197, 66, 0.3);
+}
+
+.recent-day-unit {
+  font-family: var(--font-main);
+  font-size: clamp(0.40rem, 0.8vh, 0.48rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.is-today .recent-day-unit {
+  color: #D4A72C;
+}
+
+.recent-day-track {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.recent-day-fill {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.38);
+  border-radius: 2px;
+}
+
+.is-today .recent-day-fill {
+  background: linear-gradient(90deg, #F5C542, #FFF275);
+}
+
+
 

@@ -33,25 +33,33 @@ type Config struct {
 	PollIntervalMinutes int
 }
 
+// DailyPoint representa um ponto amostrado da curva diária de geração solar
+type DailyPoint struct {
+	Time string  `json:"t"` // ex: "14:05"
+	KW   float64 `json:"v"` // ex: 6.66
+}
+
 // SolarData representa as métricas estruturadas e prontas para o HUD
 type SolarData struct {
-	Available             bool    `json:"available"`
-	StationName           string  `json:"station_name"`
-	PowerRealtime         string  `json:"potencia_realtime"`
-	PowerKW               float64 `json:"potencia_kw"`
-	YieldToday            string  `json:"rendimento_hoje"`
-	YieldTodayKWh         float64 `json:"rendimento_hoje_kwh"`
-	YieldMonth            string  `json:"rendimento_mes"`
-	GenerationYear        string  `json:"geracao_ano"`
-	CumulativeElectricity string  `json:"eletricidade_acumulada"`
-	CO2Reduction          string  `json:"co2_evitado"`
-	TreesPlanted          string  `json:"arvores_plantadas"`
-	Address               string  `json:"endereco"`
-	DataHora              string  `json:"data_hora"`
-	IsFallback            bool    `json:"is_fallback,omitempty"`
-	Reason                string  `json:"reason,omitempty"`
-	LastError             string  `json:"last_error,omitempty"`
-	UpdatedAt             int64   `json:"updated_at"`
+	Available             bool         `json:"available"`
+	StationName           string       `json:"station_name"`
+	PowerRealtime         string       `json:"potencia_realtime"`
+	PowerKW               float64      `json:"potencia_kw"`
+	PeakPowerKW           float64      `json:"peak_power_kw,omitempty"`
+	DailyCurve            []DailyPoint `json:"daily_curve,omitempty"`
+	YieldToday            string       `json:"rendimento_hoje"`
+	YieldTodayKWh         float64      `json:"rendimento_hoje_kwh"`
+	YieldMonth            string       `json:"rendimento_mes"`
+	GenerationYear        string       `json:"geracao_ano"`
+	CumulativeElectricity string       `json:"eletricidade_acumulada"`
+	CO2Reduction          string       `json:"co2_evitado"`
+	TreesPlanted          string       `json:"arvores_plantadas"`
+	Address               string       `json:"endereco"`
+	DataHora              string       `json:"data_hora"`
+	IsFallback            bool         `json:"is_fallback,omitempty"`
+	Reason                string       `json:"reason,omitempty"`
+	LastError             string       `json:"last_error,omitempty"`
+	UpdatedAt             int64        `json:"updated_at"`
 }
 
 // Client gerencia a comunicação e cache de telemetria da Huawei FusionSolar
@@ -192,10 +200,36 @@ func (c *Client) FetchData(ctx context.Context) (*SolarData, error) {
 			CO2Reduction             float64 `json:"co2Reduction"`
 			EquivalentTreePlanting   float64 `json:"equivalentTreePlanting"`
 		} `json:"socialContribution"`
+		PowerCurve struct {
+			XAxis        []string `json:"xAxis"`
+			CurrentPower string   `json:"currentPower"`
+			ActivePower  []string `json:"activePower"`
+		} `json:"powerCurve"`
 	}
 
 	if err := json.Unmarshal(stationJSON, &stationData); err != nil {
 		return c.fallbackOrError(fmt.Sprintf("erro no parse interno dos dados da estação: %v", err)), nil
+	}
+
+	// Extração dos pontos da curva diária de geração solar (5 em 5 minutos)
+	var dailyCurve []DailyPoint
+	peakPower := 0.0
+
+	for i := 0; i < len(stationData.PowerCurve.XAxis) && i < len(stationData.PowerCurve.ActivePower); i++ {
+		rawP := stationData.PowerCurve.ActivePower[i]
+		if rawP == "" || rawP == "-" {
+			continue
+		}
+		var val float64
+		if _, err := fmt.Sscanf(rawP, "%f", &val); err == nil && val >= 0 {
+			dailyCurve = append(dailyCurve, DailyPoint{
+				Time: stationData.PowerCurve.XAxis[i],
+				KW:   val,
+			})
+			if val > peakPower {
+				peakPower = val
+			}
+		}
 	}
 
 	// Formatações
@@ -210,6 +244,9 @@ func (c *Client) FetchData(ctx context.Context) (*SolarData, error) {
 	}
 
 	powerKW := stationData.RealKPI.RealTimePower
+	if peakPower < powerKW {
+		peakPower = powerKW
+	}
 	dailyKWh := stationData.RealKPI.DailyEnergy
 	monthKWh := stationData.RealKPI.MonthEnergy
 	yearKWh := stationData.RealKPI.YearEnergy
@@ -243,6 +280,8 @@ func (c *Client) FetchData(ctx context.Context) (*SolarData, error) {
 		StationName:           name,
 		PowerRealtime:         fmt.Sprintf("%.2f kW", powerKW),
 		PowerKW:               powerKW,
+		PeakPowerKW:           peakPower,
+		DailyCurve:            dailyCurve,
 		YieldToday:            fmt.Sprintf("%.1f kWh", dailyKWh),
 		YieldTodayKWh:         dailyKWh,
 		YieldMonth:            monthDisplay,
