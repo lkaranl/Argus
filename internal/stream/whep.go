@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -20,7 +21,12 @@ func generateSessionID() string {
 }
 
 func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
-	client := &http.Client{Timeout: 2000 * time.Millisecond}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			Proxy: nil, // Garante que nunca use proxy para 127.0.0.1
+		},
+	}
 	baseID := strings.TrimSuffix(cameraID, "_sub")
 	var candidates []string
 
@@ -36,7 +42,6 @@ func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
 	}
 
 	for _, cand := range candidates {
-		// go2rtc suporta tanto a API WebRTC padrão (/api/webrtc) quanto WHEP (/api/whep)
 		urls := []string{
 			fmt.Sprintf("http://127.0.0.1:1984/api/webrtc?src=%s", cand),
 			fmt.Sprintf("http://127.0.0.1:1984/api/whep?src=%s&media=video", cand),
@@ -49,16 +54,22 @@ func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
 			}
 			req.Header.Set("Content-Type", "application/sdp")
 			resp, err := client.Do(req)
-			if err == nil {
-				if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-					ans, _ := io.ReadAll(resp.Body)
-					_ = resp.Body.Close()
-					if len(ans) > 0 {
-						return ans, true
-					}
-				}
-				_ = resp.Body.Close()
+			if err != nil {
+				log.Printf("[WHEP-Fallback] Falha na conexão com go2rtc (%s): %v", go2rtcURL, err)
+				continue
 			}
+
+			if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+				ans, rErr := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if rErr == nil && len(ans) > 0 {
+					log.Printf("[WHEP-Fallback] ✓ Sucesso ao negociar H.264 via go2rtc para %s (origem %s)!", cameraID, cand)
+					return ans, true
+				}
+			} else {
+				log.Printf("[WHEP-Fallback] go2rtc (%s) respondeu HTTP %d", go2rtcURL, resp.StatusCode)
+			}
+			_ = resp.Body.Close()
 		}
 	}
 	return nil, false
@@ -110,6 +121,9 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 		offerSDP := string(body)
 		clientSupportsH265 := strings.Contains(strings.ToLower(offerSDP), "h265")
 
+		log.Printf("[WHEP] Sessão solicitada para %s (target=%s). CamConectada=%v, CamIsH265=%v, ClienteAceitaH265=%v",
+			cameraID, targetID, cam.connected.Load(), cam.isH265.Load(), clientSupportsH265)
+
 		// Se o stream nativo ainda não estiver conectado OU se a câmera transmitir em H.265
 		// e o navegador do cliente (ex: Chromium / Firefox no Linux/Raspberry Pi) NÃO suportar H.265,
 		// delega automaticamente para o gateway go2rtc local que possui fallback de transcodificação FFmpeg para H.264
@@ -121,6 +135,7 @@ func (e *Engine) ServeWHEP(w http.ResponseWriter, r *http.Request, cameraID stri
 				_, _ = w.Write(ans)
 				return
 			}
+			log.Printf("[WHEP] Fallback go2rtc não respondeu para %s. Tentando motor interno...", targetID)
 		}
 
 		// Cria uma nova conexão PeerConnection
