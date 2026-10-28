@@ -111,7 +111,11 @@ class ArgusModernClock {
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const isToday = day === todayNum;
       const isHoliday = Boolean(holidays[day]);
+      const dayOfWeek = (firstDayIndex + day - 1) % 7;
+      const isSunday = (dayOfWeek === 0);
+
       let classes = "cal-day";
+      if (isSunday) classes += " cal-sunday";
       if (isToday) classes += " cal-today";
       if (isHoliday) classes += " cal-holiday";
 
@@ -121,7 +125,12 @@ class ArgusModernClock {
       if (isHoliday && day >= todayNum && (day - todayNum) < closestHolidayDiff) {
         closestHolidayDiff = day - todayNum;
         const diaTxt = day < 10 ? `0${day}` : day;
-        nextHolidayText = `${diaTxt}/${month + 1 < 10 ? '0' + (month + 1) : month + 1} - ${holidays[day]}`;
+        const mesTxt = month + 1 < 10 ? `0${month + 1}` : month + 1;
+        if (day === todayNum) {
+          nextHolidayText = `HOJE · ${holidays[day].toUpperCase()}`;
+        } else {
+          nextHolidayText = `${diaTxt}/${mesTxt} · ${holidays[day].toUpperCase()}`;
+        }
       }
     }
 
@@ -135,9 +144,9 @@ class ArgusModernClock {
         const firstD = nextDays[0];
         const diaTxt = firstD < 10 ? `0${firstD}` : firstD;
         const mesTxt = nextM + 1 < 10 ? `0${nextM + 1}` : nextM + 1;
-        nextHolidayText = `${diaTxt}/${mesTxt} - ${nextHolidays[firstD]}`;
+        nextHolidayText = `${diaTxt}/${mesTxt} · ${nextHolidays[firstD].toUpperCase()}`;
       } else {
-        nextHolidayText = "Nenhum feriado próximo";
+        nextHolidayText = "SEM FERIADO PRÓXIMO";
       }
     }
 
@@ -190,19 +199,19 @@ class ArgusModernClock {
           
           <div class="cal-header">
             <span class="cal-title" id="cal-month-year">OUTUBRO 2026</span>
-            <span class="cal-holiday-tag" title="Feriados destacados em dourado">● FERIADOS</span>
           </div>
 
           <div class="cal-weekdays-row">
-            <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+            <span class="cal-wday-sun">D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
           </div>
 
           <div class="cal-grid" id="cal-days-grid">
             <!-- Injetado dinamicamente -->
           </div>
 
-          <div class="cal-next-holiday" id="cal-next-holiday" title="Próximo Feriado">
-            Próximo feriado: <b id="cal-holiday-text">Carregando...</b>
+          <div class="cal-next-holiday" id="cal-next-holiday" title="Próximo Feriado Nacional">
+            <span class="cal-holiday-star">★</span>
+            <b id="cal-holiday-text">Carregando...</b>
           </div>
 
         </div>
