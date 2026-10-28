@@ -396,36 +396,35 @@ class ArgusSolarWeatherWidget {
             <div class="solar-header-left">
               <span class="weather-live-dot"></span>
               <span class="solar-sun-icon">⛅</span>
-              <span class="solar-card-title">CLIMA & HISTÓRICO</span>
+              <span class="solar-card-title">CLIMA</span>
             </div>
             <div class="solar-header-right">
               <a href="/api/diagnostics" target="_blank" class="solar-corner-dash" title="Diagnóstico de Telemetria">↗</a>
             </div>
           </div>
 
-          <!-- Metade Superior: Clima Compacto (Hoje à esq, Amanhã à dir) -->
+          <!-- Metade Superior: Clima Compacto Minimalista (Hoje à esq, Amanhã à dir) -->
           <div class="weather-compact-stage">
-            <div class="weather-today-compact">
-              <div class="weather-today-icon-temp">
-                <span class="weather-today-icon">${curIcon}</span>
-                <div class="weather-today-num-row">
-                  <span class="weather-today-temp">${curTemp}°</span>
-                  <span class="weather-today-unit">C</span>
+            <div class="weather-today-compact" title="${curDesc}">
+              <span class="weather-today-icon">${curIcon}</span>
+              <div class="weather-today-temp-box">
+                <span class="weather-today-temp">${curTemp}°</span>
+                <div class="weather-today-minmax">
+                  <span class="weather-arrow-val temp-high"><span class="weather-arrow">↑</span>${todayMax}°</span>
+                  <span class="weather-arrow-val temp-low"><span class="weather-arrow">↓</span>${todayMin}°</span>
                 </div>
-              </div>
-              <div class="weather-today-meta">
-                <span class="weather-today-desc">${curDesc}</span>
-                <span class="weather-today-minmax">Máx <b>${todayMax}°</b> · Mín <b>${todayMin}°</b></span>
               </div>
             </div>
 
-            <div class="weather-tomorrow-pill">
-              <div class="tomorrow-pill-top">
+            <div class="weather-tomorrow-pill" title="Amanhã: ${tDesc}">
+              <div class="tomorrow-pill-header">
                 <span class="tomorrow-pill-tag">AMANHÃ</span>
                 <span class="tomorrow-pill-icon">${tIcon}</span>
               </div>
-              <div class="tomorrow-pill-temps"><b>${tMax}°</b><small>/${tMin}°</small></div>
-              <span class="tomorrow-pill-desc">${tDesc}</span>
+              <div class="tomorrow-pill-temps">
+                <span class="weather-arrow-val tomorrow-high"><span class="weather-arrow">↑</span>${tMax}°</span>
+                <span class="weather-arrow-val tomorrow-low"><span class="weather-arrow">↓</span>${tMin}°</span>
+              </div>
             </div>
           </div>
 
