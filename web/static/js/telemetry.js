@@ -231,6 +231,65 @@ class ArgusSolarWeatherWidget {
     `;
   }
 
+  getWeatherSvg(iconStr = "", descStr = "") {
+    const raw = (String(iconStr) + " " + String(descStr)).toLowerCase();
+
+    // 1. Tempestade / Trovoada
+    if (raw.includes("⛈") || raw.includes("tempestade") || raw.includes("trovoada")) {
+      return `<svg class="weather-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19.35 9.04C18.67 5.59 15.64 3 12 3 9.11 3 6.6 4.64 5.35 7.04 2.34 7.36 0 9.91 0 13c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="#546E7A"/>
+        <path d="M13 10.5l-3 4.5h3l-1.5 5 4.5-5.5h-3l2-4h-2z" fill="#FFD600"/>
+      </svg>`;
+    }
+
+    // 2. Pancadas de Chuva (Sol + Nuvem + Chuva)
+    if (raw.includes("🌦") || raw.includes("pancada")) {
+      return `<svg class="weather-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="15.5" cy="7" r="3.2" fill="#F5C542"/>
+        <path d="M15.5 2v1.5M15.5 11v1.5M10.5 7h1.5M19 7h1.5" stroke="#F5C542" stroke-width="1.3" stroke-linecap="round"/>
+        <path d="M14.5 12.5c-.4-1.8-1.9-3-3.8-3-1.5 0-2.8.9-3.4 2.1-1.6.2-2.8 1.5-2.8 3.1 0 1.8 1.4 3.1 3.1 3.1h6.8c1.5 0 2.6-1.1 2.6-2.6 0-1.4-1.1-2.5-2.5-2.7z" fill="#90A4AE"/>
+        <path d="M8 18.5l-1.2 2.5M12 18.5l-1.2 2.5" stroke="#00E5FF" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>`;
+    }
+
+    // 3. Chuva / Garoa
+    if (raw.includes("🌧") || raw.includes("chuva") || raw.includes("garoa")) {
+      return `<svg class="weather-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="#90A4AE"/>
+        <path d="M8 19l-1.5 3M12 19l-1.5 3M16 19l-1.5 3" stroke="#00E5FF" stroke-width="2" stroke-linecap="round"/>
+      </svg>`;
+    }
+
+    // 4. Nevoeiro
+    if (raw.includes("🌫") || raw.includes("nevoeiro") || raw.includes("neblina")) {
+      return `<svg class="weather-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 7h16M2 11h20M4 15h16M6 19h12" stroke="#B0BEC5" stroke-width="2" stroke-linecap="round"/>
+      </svg>`;
+    }
+
+    // 5. Parcialmente Nublado / Céu Aberto com Sol
+    if (raw.includes("⛅") || raw.includes("🌤") || raw.includes("parcial") || raw.includes("aberto")) {
+      return `<svg class="weather-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="15.5" cy="8.5" r="3.5" fill="#F5C542"/>
+        <path d="M15.5 3v1.5M15.5 12.5V14M10 8.5h1.5M19.5 8.5H21M11.6 4.6l1.1 1.1M17.9 10.9l1.1 1.1M11.6 12.4l1.1-1.1M17.9 6.1l1.1-1.1" stroke="#F5C542" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M15.5 13.5c-.4-2.1-2.2-3.5-4.3-3.5-1.7 0-3.2 1-3.9 2.4-1.8.2-3.3 1.7-3.3 3.6 0 2 1.6 3.5 3.6 3.5h7.8c1.7 0 3-1.3 3-3 0-1.6-1.2-2.9-2.9-3z" fill="#CFD8DC"/>
+      </svg>`;
+    }
+
+    // 6. Totalmente Nublado
+    if (raw.includes("☁") || raw.includes("nublado") || raw.includes("encoberto")) {
+      return `<svg class="weather-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="#B0BEC5"/>
+      </svg>`;
+    }
+
+    // 7. Ensolarado / Padrão (Sol Puro)
+    return `<svg class="weather-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="5" fill="#F5C542"/>
+      <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="#F5C542" stroke-width="2" stroke-linecap="round"/>
+    </svg>`;
+  }
+
   extractKpis(solar) {
     if (!solar) {
       return { powerNum: "0.00", todayStr: "0.0", monthStr: "0", monthUnit: "kWh", totalStr: "0.0", peakNum: "0.00", dailyCurve: [] };
@@ -322,6 +381,11 @@ class ArgusSolarWeatherWidget {
     const tMin = tomorrow.temp_min !== undefined ? tomorrow.temp_min : 24;
     const tDesc = tomorrow.weather_desc || "Céu Aberto";
 
+    const curSvg = this.getWeatherSvg(curIcon, curDesc);
+    const tSvg = this.getWeatherSvg(tIcon, tDesc);
+    const sunHeaderSvg = this.getWeatherSvg("☀️");
+    const weatherHeaderSvg = this.getWeatherSvg("⛅");
+
     this.container.innerHTML = `
       <div class="solar-weather-split-row">
         
@@ -332,7 +396,7 @@ class ArgusSolarWeatherWidget {
           <div class="solar-card-header">
             <div class="solar-header-left">
               <span class="solar-live-dot"></span>
-              <span class="solar-sun-icon">☀️</span>
+              <span class="solar-sun-icon">${sunHeaderSvg}</span>
               <span class="solar-card-title">MINHA ENERGIA SOLAR</span>
             </div>
             <div class="solar-header-right">
@@ -395,7 +459,7 @@ class ArgusSolarWeatherWidget {
           <div class="solar-card-header weather-card-header">
             <div class="solar-header-left">
               <span class="weather-live-dot"></span>
-              <span class="solar-sun-icon">⛅</span>
+              <span class="solar-sun-icon">${weatherHeaderSvg}</span>
               <span class="solar-card-title">CLIMA</span>
             </div>
             <div class="solar-header-right">
@@ -406,7 +470,7 @@ class ArgusSolarWeatherWidget {
           <!-- Metade Superior: Clima Compacto Minimalista (Hoje à esq, Amanhã à dir) -->
           <div class="weather-compact-stage">
             <div class="weather-today-compact" title="${curDesc}">
-              <span class="weather-today-icon">${curIcon}</span>
+              <span class="weather-today-icon">${curSvg}</span>
               <div class="weather-today-temp-box">
                 <span class="weather-today-temp">${curTemp}°</span>
                 <div class="weather-today-minmax">
@@ -419,7 +483,7 @@ class ArgusSolarWeatherWidget {
             <div class="weather-tomorrow-pill" title="Amanhã: ${tDesc}">
               <div class="tomorrow-pill-header">
                 <span class="tomorrow-pill-tag">AMANHÃ</span>
-                <span class="tomorrow-pill-icon">${tIcon}</span>
+                <span class="tomorrow-pill-icon">${tSvg}</span>
               </div>
               <div class="tomorrow-pill-temps">
                 <span class="weather-arrow-val tomorrow-high"><span class="weather-arrow">↑</span>${tMax}°</span>

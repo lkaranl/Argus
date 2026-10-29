@@ -64,6 +64,11 @@ Como o Pi 4 possui 2 GB de RAM e já utiliza swap:
    dtoverlay=vc4-kms-v3d
    gpu_mem=128
    ```
+3. **Pacote de Fontes de Emoji do Sistema**:
+   Em instalações mínimas do Raspberry Pi OS / Debian Kiosk, o suporte a emojis do Chromium depende do pacote de fontes:
+   ```bash
+   sudo apt install -y fonts-noto-color-emoji && fc-cache -f
+   ```
 
 ---
 

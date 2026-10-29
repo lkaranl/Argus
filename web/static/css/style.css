@@ -796,9 +796,19 @@ body.fullscreen-active {
 }
 
 .solar-sun-icon {
-  font-size: 0.85rem;
-  line-height: 1;
-  text-shadow: 0 0 8px rgba(245, 197, 66, 0.7);
+  width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.solar-sun-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 0 6px rgba(245, 197, 66, 0.7));
 }
 
 .solar-card-title {
@@ -990,11 +1000,25 @@ body.fullscreen-active {
   min-width: 0;
 }
 
+.weather-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .weather-today-icon {
-  font-size: clamp(1.8rem, 3.8vh, 2.45rem);
-  line-height: 1;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+  width: clamp(2.1rem, 4.4vh, 2.9rem);
+  height: clamp(2.1rem, 4.4vh, 2.9rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.25));
+}
+
+.weather-today-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .weather-today-temp-box {
@@ -1080,8 +1104,17 @@ body.fullscreen-active {
 }
 
 .tomorrow-pill-icon {
-  font-size: clamp(0.90rem, 1.7vh, 1.15rem);
-  line-height: 1;
+  width: clamp(1.05rem, 2.1vh, 1.35rem);
+  height: clamp(1.05rem, 2.1vh, 1.35rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tomorrow-pill-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .tomorrow-pill-temps {
