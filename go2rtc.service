@@ -1,0 +1,21 @@
+[Unit]
+Description=go2rtc WebRTC Streaming & Transcoding Gateway
+After=network-online.target
+Wants=network-online.target
+Before=argus.service
+
+[Service]
+Type=simple
+User=debian
+Group=debian
+WorkingDirectory=/home/debian/Argus
+ExecStart=/usr/local/bin/go2rtc -c /home/debian/Argus/go2rtc.yaml
+Restart=always
+RestartSec=3s
+LimitNOFILE=65535
+SyslogIdentifier=go2rtc
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

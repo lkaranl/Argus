@@ -11,6 +11,8 @@ argus
 *.local
 dados_solar.json
 data/
+config.yaml
+go2rtc.yaml
 
 # Sistema operacional
 .DS_Store
