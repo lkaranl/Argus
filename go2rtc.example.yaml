@@ -12,46 +12,38 @@ webrtc:
 
 ffmpeg:
   bin: "ffmpeg"
+  # Perfil baseline + ultrafast + rate control: reduz CPU do Debian e permite decodificação suave no Raspberry Pi
+  h264: "-c:v libx264 -g 30 -profile:v baseline -level:v 3.0 -preset:v ultrafast -tune:v zerolatency -pix_fmt:v yuv420p -b:v 700k -maxrate 900k -bufsize 1400k"
 
 streams:
   # Câmera 01 — Portão
   cam_frente:
     - rtsp://usuario:senha@192.168.68.53:554/stream1
-    - ffmpeg:cam_frente#video=h264
-  cam-0:
-    - rtsp://usuario:senha@192.168.68.53:554/stream1
-    - ffmpeg:cam-0#video=h264
+    - ffmpeg:cam_frente#video=h264#bitrate=1500k#raw=-r 20
   cam_frente_sub:
     - rtsp://usuario:senha@192.168.68.53:554/stream2
-    - ffmpeg:cam_frente_sub#video=h264
-  cam-0-sub:
-    - rtsp://usuario:senha@192.168.68.53:554/stream2
-    - ffmpeg:cam-0-sub#video=h264
+    - ffmpeg:cam_frente_sub#video=h264#bitrate=700k#raw=-r 15
 
   # Câmera 02 — Garagem
   cam_garagem:
     - rtsp://usuario:senha@192.168.68.57:554/stream1
-    - ffmpeg:cam_garagem#video=h264
-  cam-1:
-    - rtsp://usuario:senha@192.168.68.57:554/stream1
-    - ffmpeg:cam-1#video=h264
+    - ffmpeg:cam_garagem#video=h264#bitrate=1500k#raw=-r 20
   cam_garagem_sub:
     - rtsp://usuario:senha@192.168.68.57:554/stream2
-    - ffmpeg:cam_garagem_sub#video=h264
-  cam-1-sub:
-    - rtsp://usuario:senha@192.168.68.57:554/stream2
-    - ffmpeg:cam-1-sub#video=h264
+    - ffmpeg:cam_garagem_sub#video=h264#bitrate=700k#raw=-r 15
 
   # Câmera 03 — Fundos / Perímetro
   cam_fundos:
     - rtsp://usuario:senha@192.168.68.56:554/stream1
-    - ffmpeg:cam_fundos#video=h264
-  cam-2:
-    - rtsp://usuario:senha@192.168.68.56:554/stream1
-    - ffmpeg:cam-2#video=h264
+    - ffmpeg:cam_fundos#video=h264#bitrate=1500k#raw=-r 20
   cam_fundos_sub:
     - rtsp://usuario:senha@192.168.68.56:554/stream2
-    - ffmpeg:cam_fundos_sub#video=h264
-  cam-2-sub:
-    - rtsp://usuario:senha@192.168.68.56:554/stream2
-    - ffmpeg:cam-2-sub#video=h264
+    - ffmpeg:cam_fundos_sub#video=h264#bitrate=700k#raw=-r 15
+
+  # Aliases que compartilham a mesma conexão RTSP das fontes acima sem abrir novos sockets
+  cam-0: cam_frente
+  cam-0-sub: cam_frente_sub
+  cam-1: cam_garagem
+  cam-1-sub: cam_garagem_sub
+  cam-2: cam_fundos
+  cam-2-sub: cam_fundos_sub

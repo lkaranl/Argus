@@ -22,7 +22,7 @@ func generateSessionID() string {
 
 func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
 	client := &http.Client{
-		Timeout: 15 * time.Second,
+		Timeout: 8 * time.Second,
 		Transport: &http.Transport{
 			Proxy: nil, // Garante que nunca use proxy para 127.0.0.1
 		},
@@ -34,57 +34,51 @@ func tryGo2RTC(cameraID string, sdpOffer []byte) ([]byte, bool) {
 	if isSub {
 		switch baseID {
 		case "cam_frente", "camera_1":
-			candidates = append(candidates, "cam_frente_sub", "cam-0-sub", "cam-0", "cam_frente")
+			candidates = append(candidates, "cam_frente_sub", "cam-0-sub")
 		case "cam_garagem", "camera_2":
-			candidates = append(candidates, "cam_garagem_sub", "cam-1-sub", "cam-1", "cam_garagem")
+			candidates = append(candidates, "cam_garagem_sub", "cam-1-sub")
 		case "cam_fundos", "camera_3":
-			candidates = append(candidates, "cam_fundos_sub", "cam-2-sub", "cam-2", "cam_fundos")
+			candidates = append(candidates, "cam_fundos_sub", "cam-2-sub")
 		default:
-			candidates = append(candidates, cameraID, baseID)
+			candidates = append(candidates, cameraID, baseID+"_sub")
 		}
 	} else {
 		switch baseID {
 		case "cam_frente", "camera_1":
-			candidates = append(candidates, "cam_frente", "cam-0", "camera-1")
+			candidates = append(candidates, "cam_frente", "cam-0")
 		case "cam_garagem", "camera_2":
-			candidates = append(candidates, "cam_garagem", "cam-1", "camera-2")
+			candidates = append(candidates, "cam_garagem", "cam-1")
 		case "cam_fundos", "camera_3":
-			candidates = append(candidates, "cam_fundos", "cam-2", "camera-3")
+			candidates = append(candidates, "cam_fundos", "cam-2")
 		default:
 			candidates = append(candidates, baseID, cameraID)
 		}
 	}
 
 	for _, cand := range candidates {
-		urls := []string{
-			fmt.Sprintf("http://127.0.0.1:1984/api/webrtc?src=%s", cand),
-			fmt.Sprintf("http://127.0.0.1:1984/api/whep?src=%s&media=video", cand),
+		go2rtcURL := fmt.Sprintf("http://127.0.0.1:1984/api/webrtc?src=%s", cand)
+		req, err := http.NewRequest(http.MethodPost, go2rtcURL, bytes.NewReader(sdpOffer))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/sdp")
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("[WHEP-Fallback] Falha na conexão com go2rtc (%s): %v", go2rtcURL, err)
+			continue
 		}
 
-		for _, go2rtcURL := range urls {
-			req, err := http.NewRequest(http.MethodPost, go2rtcURL, bytes.NewReader(sdpOffer))
-			if err != nil {
-				continue
-			}
-			req.Header.Set("Content-Type", "application/sdp")
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Printf("[WHEP-Fallback] Falha na conexão com go2rtc (%s): %v", go2rtcURL, err)
-				continue
-			}
-
-			if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-				ans, rErr := io.ReadAll(resp.Body)
-				_ = resp.Body.Close()
-				if rErr == nil && len(ans) > 0 {
-					log.Printf("[WHEP-Fallback] ✓ Sucesso ao negociar H.264 via go2rtc para %s (origem %s)!", cameraID, cand)
-					return ans, true
-				}
-			} else {
-				log.Printf("[WHEP-Fallback] go2rtc (%s) respondeu HTTP %d", go2rtcURL, resp.StatusCode)
-			}
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+			ans, rErr := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
+			if rErr == nil && len(ans) > 0 {
+				log.Printf("[WHEP-Fallback] ✓ Sucesso ao negociar H.264 via go2rtc para %s (origem %s)!", cameraID, cand)
+				return ans, true
+			}
+		} else {
+			log.Printf("[WHEP-Fallback] go2rtc (%s) respondeu HTTP %d", go2rtcURL, resp.StatusCode)
 		}
+		_ = resp.Body.Close()
 	}
 	return nil, false
 }
